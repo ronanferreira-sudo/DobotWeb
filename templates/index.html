@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Controle do Dobot Magician Lite</title>
+<style>
+  :root {
+    --bg: #0f172a;
+    --card: #1e293b;
+    --accent: #38bdf8;
+    --ok: #22c55e;
+    --err: #ef4444;
+    --warn: #f59e0b;
+    --text: #e2e8f0;
+    --muted: #94a3b8;
+    --border: #334155;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    padding: 24px;
+  }
+  h1 { margin: 0 0 4px; font-size: 1.5rem; }
+  .sub { color: var(--muted); margin: 0 0 24px; }
+  .status { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
+  .stat { background: var(--card); border-radius: 12px; padding: 16px; flex: 1; min-width: 160px; }
+  .stat .label { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
+  .stat .value { font-size: 1.15rem; margin-top: 4px; font-weight: 600; }
+  
+  .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; margin-bottom: 24px; }
+  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+  
+  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
+  .dot.on { background: var(--ok); }
+  .dot.off { background: var(--err); }
+  .dot.run { background: var(--warn); }
+  
+  /* Container do editor com indexação de linhas */
+  .editor-wrapper {
+    display: flex; background: #0b1220; border: 1px solid var(--border);
+    border-radius: 8px; overflow: hidden; height: 360px;
+  }
+  .line-numbers {
+    padding: 12px 8px; background: #070e1a; color: #475569;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: .9rem;
+    line-height: 1.5; text-align: right; user-select: none;
+    border-right: 1px solid var(--border); min-width: 44px; overflow-y: hidden;
+    white-space: pre;
+  }
+  textarea {
+    flex: 1; height: 100%; background: transparent; color: #d7e3ff;
+    border: none; outline: none; padding: 12px;
+    font-family: "Cascadia Code", Consolas, monospace; font-size: .9rem;
+    resize: none; line-height: 1.5; white-space: pre; overflow-x: auto; overflow-y: auto;
+  }
+
+  .actions { display: flex; gap: 12px; margin-top: 12px; align-items: center; }
+  button {
+    border: none; border-radius: 8px; padding: 10px 18px; font-size: 1rem;
+    cursor: pointer; font-weight: 600; color: #0b1220;
+    transition: all 0.2s ease;
+  }
+  button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
+  .btn-run { background: var(--accent); }
+  .btn-stop { background: var(--err); color: white; }
+  .btn-connect { background: var(--ok); }
+  .btn-req { background: var(--warn); color: #000; }
+  .btn-sm { padding: 6px 12px; font-size: 0.85rem; border-radius: 6px; }
+  .btn-secondary { background: #334155; color: #f1f5f9; font-weight: 500; }
+  .btn-auth { background: var(--ok); color: #0b1220; }
+  .btn-revoke { background: var(--err); color: #fff; }
+  button:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
+  
+  #log {
+    background: #0b1220; border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; height: 430px; overflow-y: auto; font-family: Consolas, monospace;
+    font-size: .85rem; white-space: pre-wrap; line-height: 1.4;
+  }
+  #log .err { color: var(--err); }
+  .ref { margin-top: 16px; font-size: .85rem; color: var(--muted); line-height: 1.7; }
+  .ref code { color: #7dd3fc; }
+  .port-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
+  select { background: #0b1220; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
+
+  /* Barra de atalhos para códigos salvos */
+  .script-toolbar {
+    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px;
+    background: #0b1220; padding: 10px; border-radius: 8px; border: 1px solid var(--border);
+  }
+  .script-toolbar select { flex: 1; min-width: 180px; }
+
+  /* Tabela de conexões e badges */
+  .auth-banner {
+    padding: 10px 14px; border-radius: 8px; font-size: 0.9rem; font-weight: 500;
+    margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;
+  }
+  .auth-banner.ok { background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4); color: #4ade80; }
+  .auth-banner.warn { background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; }
+  .auth-banner.err { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; }
+
+  .user-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
+  .user-table th, .user-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
+  .user-table th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
+  
+  .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
+  .badge-ok { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); }
+  .badge-warn { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
+  .badge-err { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
+  .badge-tag { background: #334155; color: #cbd5e1; margin-left: 6px; }
+</style>
+</head>
+<body>
+  <h1>Controle do Dobot Magician Lite</h1>
+  <p class="sub">Notebook conectado ao braço via USB · controle de autorizações para conexões da porta 5000</p>
+
+  <div class="status">
+    <div class="stat">
+      <div class="label">Conexão com o braço</div>
+      <div class="value" id="conexao"><span class="dot off"></span>—</div>
+    </div>
+    <div class="stat">
+      <div class="label">Posição (x, y, z, r)</div>
+      <div class="value" id="posicao">—</div>
+    </div>
+    <div class="stat">
+      <div class="label">Execução</div>
+      <div class="value" id="execucao"><span class="dot off"></span>Parado</div>
+    </div>
+    <div class="stat">
+      <div class="label">Conexões Ativas (5000)</div>
+      <div class="value" id="totalConectados">0 online</div>
+    </div>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <div class="port-row">
+        <select id="portaSelect"></select>
+        <button class="btn-connect" id="btnConectar">Conectar</button>
+      </div>
+
+      <div id="authBanner" class="auth-banner warn">
+        <span id="authStatusText">Verificando autorização...</span>
+        <button id="btnSolicitarInline" class="btn-req btn-sm" style="display:none;">Solicitar Autorização</button>
+      </div>
+
+      <!-- Toolbar para seleção, carregamento e download de códigos -->
+      <div class="script-toolbar">
+        <select id="savedScriptsSelect">
+          <optgroup label="Exemplos Prontos">
+            <option value="ventosa">Exemplo: Pegar com Ventosa</option>
+            <option value="garra">Exemplo: Pegar com Garra</option>
+            <option value="desenhar">Exemplo: Desenhar Quadrado</option>
+          </optgroup>
+          <optgroup label="Meus Códigos Salvos" id="optgroupSalvos">
+          </optgroup>
+        </select>
+        <button id="btnPuxarCodigo" class="btn-sm btn-secondary" title="Puxar código selecionado para a área de execução">📂 Carregar</button>
+        <button id="btnFormatarLinhas" class="btn-sm btn-secondary" title="Organizar para colocar 1 comando por linha">🧹 Formatar</button>
+        <button id="btnSalvarCodigo" class="btn-sm btn-secondary" title="Salvar código atual no navegador">💾 Salvar</button>
+        <button id="btnBaixarCodigo" class="btn-sm btn-secondary" title="Baixar arquivo .txt">⬇️ Baixar</button>
+        <label for="inputAbrirArquivo" class="btn-sm btn-secondary" style="cursor:pointer; display:inline-block;" title="Abrir arquivo do computador">📁 Abrir</label>
+        <input type="file" id="inputAbrirArquivo" accept=".txt,.dobot,.py" style="display:none;">
+      </div>
+
+      <!-- Editor de Código com Indexação de Linhas -->
+      <div class="editor-wrapper">
+        <div class="line-numbers" id="lineNumbers">1</div>
+        <textarea id="codigo" wrap="off" spellcheck="false"># Exemplo: pegar e soltar com a VENTOSA
+velocidade 200 200
+mover 200 0 50 0
+ventosa on
+mover 200 0 0 0
+esperar 500
+mover 200 0 50 0
+mover 240 0 50 0
+mover 240 0 0 0
+ventosa off
+mover 240 0 50 0</textarea>
+      </div>
+
+      <div class="actions">
+        <button class="btn-run" id="btnExecutar">Executar</button>
+        <button class="btn-stop" id="btnParar">Parar (emergência)</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2 style="margin-top:0; font-size:1.1rem;">Saída</h2>
+      <div id="log"></div>
+      <div class="ref">
+        <strong>Comandos (uma instrução por linha):</strong><br>
+        <code>mover x y z [r]</code> — move para posição absoluta (mm)<br>
+        <code>desenhar x y [z]</code> — move mantendo a altura (para desenhar)<br>
+        <code>garra on|off</code> — fecha/abre a garra<br>
+        <code>ventosa on|off</code> — liga/desliga a ventosa<br>
+        <code>esperar ms</code> — pausa (milissegundos)<br>
+        <code>velocidade v [a]</code> — velocidade/aceleração<br>
+        <code>home</code> — volta para (200, 0, 0, 0)<br>
+        <code>posicao</code> — mostra a posição atual<br>
+        Linhas começando com <code>#</code> são comentários.
+      </div>
+    </div>
+  </div>
+
+  <!-- Card de pessoas conectadas via porta 5000 -->
+  <div class="card">
+    <h2 style="margin-top:0; font-size:1.1rem; display:flex; justify-content:space-between; align-items:center;">
+      <span>Pessoas Conectadas (Porta 5000)</span>
+      <span style="font-size:0.85rem; color:var(--muted); font-weight:normal;">Atualização em tempo real</span>
+    </h2>
+    <table class="user-table">
+      <thead>
+        <tr>
+          <th>Endereço IP</th>
+          <th>Identificador</th>
+          <th>Status de Autorização</th>
+          <th>Ações do Administrador</th>
+        </tr>
+      </thead>
+      <tbody id="tabelaClientes">
+        <tr>
+          <td colspan="4" style="color:var(--muted); text-align:center;">Carregando conexões...</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+<script>
+  const $ = (id) => document.getElementById(id);
+
+  const EXEMPLOS = {
+    ventosa: "# Exemplo: pegar e soltar com a VENTOSA\nvelocidade 200 200\nmover 200 0 50 0\nventosa on\nmover 200 0 0 0\nesperar 500\nmover 200 0 50 0\nmover 240 0 50 0\nmover 240 0 0 0\nventosa off\nmover 240 0 50 0",
+    garra: "# Exemplo: pegar e soltar com a GARRA\nvelocidade 200 200\nmover 200 0 60 0\ngarra off\nmover 200 0 20 0\ngarra on\nesperar 500\nmover 200 0 60 0\nmover 250 0 60 0\nmover 250 0 20 0\ngarra off\nmover 250 0 60 0",
+    desenhar: "# Exemplo: desenhar um quadrado com CANETA\nvelocidade 100 100\nmover 200 -40 30 0\nmover 200 -40 0 0\ndesenhar 240 -40\ndesenhar 240 40\ndesenhar 200 40\ndesenhar 200 -40\nmover 200 -40 30 0"
+  };
+
+  function getClientId() {
+    let id = localStorage.getItem('dobot_client_id');
+    if (!id) {
+      id = 'c_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
+      localStorage.setItem('dobot_client_id', id);
+    }
+    return id;
+  }
+  const clientId = getClientId();
+
+  // Função de atualização da indexação / numeração de linhas
+  function atualizarNumeracaoLinhas() {
+    const textarea = $('codigo');
+    const lineNumbers = $('lineNumbers');
+    const totalLinhas = textarea.value.split('\n').length;
+    const numeros = Array.from({ length: totalLinhas }, (_, i) => i + 1).join('\n');
+    lineNumbers.textContent = numeros;
+  }
+
+  // Normalizar quebras de linha e garantir que cada comando fique na sua própria linha
+  function normalizarECarregarCodigo(txt) {
+    if (txt === undefined || txt === null) return;
+    // Converter CRLF (\r\n) e CR (\r) para \n
+    let str = txt.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+    
+    // Se o código tiver comandos juntos separados por ponto e vírgula
+    str = str.replace(/;\s*/g, '\n');
+
+    // Dividir em linhas mantendo os comandos limpos por linha
+    const linhas = str.split('\n').map(l => l.trimEnd());
+    
+    $('codigo').value = linhas.join('\n');
+    atualizarNumeracaoLinhas();
+  }
+
+  function carregarCodigosSalvosSelect() {
+    const optgroup = $('optgroupSalvos');
+    optgroup.innerHTML = '';
+    const salvos = JSON.parse(localStorage.getItem('dobot_user_scripts') || '{}');
+    const chaves = Object.keys(salvos);
+    if (chaves.length === 0) {
+      const opt = document.createElement('option');
+      opt.disabled = true;
+      opt.textContent = '(Nenhum código personalizado salvo)';
+      optgroup.appendChild(opt);
+    } else {
+      chaves.forEach(nome => {
+        const opt = document.createElement('option');
+        opt.value = 'custom:' + nome;
+        opt.textContent = '📜 ' + nome;
+        optgroup.appendChild(opt);
+      });
+    }
+  }
+
+  function puxarCodigoSelecionado() {
+    const val = $('savedScriptsSelect').value;
+    if (!val) return;
+    let texto = '';
+    if (val.startsWith('custom:')) {
+      const nome = val.replace('custom:', '');
+      const salvos = JSON.parse(localStorage.getItem('dobot_user_scripts') || '{}');
+      texto = salvos[nome] || '';
+    } else if (EXEMPLOS[val]) {
+      texto = EXEMPLOS[val];
+    }
+    normalizarECarregarCodigo(texto);
+  }
+
+  function salvarCodigoAtual() {
+    const codigo = $('codigo').value.trim();
+    if (!codigo) {
+      alert('O campo de código está vazio.');
+      return;
+    }
+    const nome = prompt('Digite um nome para identificar este código:');
+    if (!nome) return;
+    const salvos = JSON.parse(localStorage.getItem('dobot_user_scripts') || '{}');
+    salvos[nome] = codigo;
+    localStorage.setItem('dobot_user_scripts', JSON.stringify(salvos));
+    carregarCodigosSalvosSelect();
+    $('savedScriptsSelect').value = 'custom:' + nome;
+    alert(`Código "${nome}" salvo com sucesso!`);
+  }
+
+  function baixarCodigoArquivo() {
+    const codigo = $('codigo').value;
+    const blob = new Blob([codigo], { type: 'text/plain;charset=utf-8' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = 'codigo_dobot.txt';
+    link.click();
+    URL.revokeObjectURL(link.href);
+  }
+
+  function abrirArquivoLocal(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = function(evt) {
+      normalizarECarregarCodigo(evt.target.result);
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  }
+
+  async function carregarPortas() {
+    try {
+      const resp = await fetch('/portas');
+      const dados = await resp.json();
+      const sel = $('portaSelect');
+      sel.innerHTML = '';
+      const auto = document.createElement('option');
+      auto.value = '';
+      auto.textContent = 'Automático (primeira porta)';
+      sel.appendChild(auto);
+      for (const p of dados.portas) {
+        const opt = document.createElement('option');
+        opt.value = p;
+        opt.textContent = p;
+        if (p === dados.atual) opt.selected = true;
+        sel.appendChild(opt);
+      }
+    } catch (e) {}
+  }
+
+  async function atualizarStatus() {
+    try {
+      const resp = await fetch('/status?client_id=' + encodeURIComponent(clientId));
+      const dados = await resp.json();
+
+      // Atualiza Status do Braço
+      const cx = $('conexao');
+      if (dados.conectado) {
+        cx.innerHTML = '<span class="dot on"></span>Conectado (' + (dados.porta || '?') + ')';
+      } else {
+        cx.innerHTML = '<span class="dot off"></span>Não conectado';
+      }
+
+      $('posicao').textContent = dados.posicao ? dados.posicao.join(', ') : '—';
+
+      const ex = $('execucao');
+      if (dados.executando) {
+        ex.innerHTML = '<span class="dot run"></span>Executando…';
+      } else {
+        ex.innerHTML = '<span class="dot off"></span>Parado';
+      }
+
+      // Atualiza Log
+      const log = $('log');
+      log.innerHTML = '';
+      for (const linha of dados.log) {
+        const div = document.createElement('div');
+        div.textContent = linha;
+        log.appendChild(div);
+      }
+      if (dados.erro) {
+        const div = document.createElement('div');
+        div.className = 'err';
+        div.textContent = 'ERRO: ' + dados.erro;
+        log.appendChild(div);
+      }
+      log.scrollTop = log.scrollHeight;
+
+      // Atualiza Status do Cliente Atual e Banner de Autorização
+      const seuStatus = dados.seu_status || {};
+      const btnExec = $('btnExecutar');
+      const banner = $('authBanner');
+      const statusText = $('authStatusText');
+      const btnSolicitar = $('btnSolicitarInline');
+
+      if (seuStatus.autorizado) {
+        btnExec.disabled = false;
+        banner.className = 'auth-banner ok';
+        statusText.textContent = '✅ Você está autorizado a executar comandos no robô.';
+        btnSolicitar.style.display = 'none';
+      } else if (seuStatus.solicitou) {
+        btnExec.disabled = true;
+        banner.className = 'auth-banner warn';
+        statusText.textContent = '⏳ Sua solicitação foi enviada. Aguardando aprovação do administrador do notebook...';
+        btnSolicitar.style.display = 'none';
+      } else {
+        btnExec.disabled = true;
+        banner.className = 'auth-banner err';
+        statusText.textContent = '⚠️ Devido ao número de conexões na porta 5000, você precisa de autorização para executar.';
+        btnSolicitar.style.display = 'inline-block';
+      }
+
+      // Atualiza Lista de Pessoas Conectadas
+      const clientes = dados.clientes || [];
+      $('totalConectados').textContent = clientes.length + (clientes.length === 1 ? ' pessoa' : ' pessoas');
+
+      const tbody = $('tabelaClientes');
+      tbody.innerHTML = '';
+
+      if (clientes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted); text-align:center;">Nenhuma conexão detectada.</td></tr>';
+      } else {
+        const souAdmin = seuStatus.is_admin;
+        clientes.forEach(c => {
+          const tr = document.createElement('tr');
+
+          // Coluna IP & Badges
+          const tdIp = document.createElement('td');
+          tdIp.textContent = c.ip;
+          if (c.is_you) {
+            const b = document.createElement('span');
+            b.className = 'badge badge-tag';
+            b.textContent = 'Você';
+            tdIp.appendChild(b);
+          }
+          if (c.is_admin) {
+            const b = document.createElement('span');
+            b.className = 'badge badge-tag';
+            b.style.background = '#0284c7';
+            b.textContent = 'Admin (Host)';
+            tdIp.appendChild(b);
+          }
+          tr.appendChild(tdIp);
+
+          // Coluna ID
+          const tdId = document.createElement('td');
+          tdId.style.fontFamily = 'monospace';
+          tdId.textContent = c.id.substring(0, 12) + '…';
+          tr.appendChild(tdId);
+
+          // Coluna Status
+          const tdStatus = document.createElement('td');
+          if (c.autorizado) {
+            tdStatus.innerHTML = '<span class="badge badge-ok">Autorizado</span>';
+          } else if (c.solicitou) {
+            tdStatus.innerHTML = '<span class="badge badge-warn">Aguardando Autorização</span>';
+          } else {
+            tdStatus.innerHTML = '<span class="badge badge-err">Não Autorizado</span>';
+          }
+          tr.appendChild(tdStatus);
+
+          // Coluna Ações
+          const tdAcoes = document.createElement('td');
+          if (souAdmin && !c.is_admin) {
+            if (c.autorizado) {
+              const btnRev = document.createElement('button');
+              btnRev.className = 'btn-revoke btn-sm';
+              btnRev.textContent = 'Revogar Acesso';
+              btnRev.onclick = () => alterarAutorizacao(c.id, false);
+              tdAcoes.appendChild(btnRev);
+            } else {
+              const btnAut = document.createElement('button');
+              btnAut.className = 'btn-auth btn-sm';
+              btnAut.textContent = 'Autorizar Execução';
+              btnAut.onclick = () => alterarAutorizacao(c.id, true);
+              tdAcoes.appendChild(btnAut);
+            }
+          } else if (c.is_admin) {
+            tdAcoes.textContent = 'Administrador do sistema';
+            tdAcoes.style.color = 'var(--muted)';
+          } else if (c.is_you && !c.autorizado) {
+            if (!c.solicitou) {
+              const btnSol = document.createElement('button');
+              btnSol.className = 'btn-req btn-sm';
+              btnSol.textContent = 'Solicitar Permissão';
+              btnSol.onclick = solicitarAutorizacao;
+              tdAcoes.appendChild(btnSol);
+            } else {
+              tdAcoes.textContent = 'Aguardando aprovação...';
+              tdAcoes.style.color = 'var(--warn)';
+            }
+          } else {
+            tdAcoes.textContent = '—';
+            tdAcoes.style.color = 'var(--muted)';
+          }
+          tr.appendChild(tdAcoes);
+
+          tbody.appendChild(tr);
+        });
+      }
+    } catch (e) {}
+  }
+
+  async function solicitarAutorizacao() {
+    try {
+      const resp = await fetch('/solicitar_autorizacao', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ client_id: clientId })
+      });
+      const dados = await resp.json();
+      if (!dados.ok) alert(dados.erro || 'Erro ao solicitar autorização.');
+      atualizarStatus();
+    } catch (e) {
+      alert('Erro de conexão ao solicitar autorização.');
+    }
+  }
+
+  async function alterarAutorizacao(targetId, autorizado) {
+    try {
+      const resp = await fetch('/autorizar', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          admin_id: clientId,
+          target_id: targetId,
+          autorizado: autorizado
+        })
+      });
+      const dados = await resp.json();
+      if (!dados.ok) alert(dados.erro || 'Erro ao alterar autorização.');
+      atualizarStatus();
+    } catch (e) {
+      alert('Erro de conexão ao alterar autorização.');
+    }
+  }
+
+  // Sincronização e digitação das linhas do editor
+  const textareaCodigo = $('codigo');
+  textareaCodigo.addEventListener('input', atualizarNumeracaoLinhas);
+  textareaCodigo.addEventListener('scroll', () => {
+    $('lineNumbers').scrollTop = textareaCodigo.scrollTop;
+  });
+
+  // Eventos da toolbar de código
+  $('btnPuxarCodigo').addEventListener('click', puxarCodigoSelecionado);
+  $('btnFormatarLinhas').addEventListener('click', () => normalizarECarregarCodigo(textareaCodigo.value));
+  $('btnSalvarCodigo').addEventListener('click', salvarCodigoAtual);
+  $('btnBaixarCodigo').addEventListener('click', baixarCodigoArquivo);
+  $('inputAbrirArquivo').addEventListener('change', abrirArquivoLocal);
+
+  $('btnSolicitarInline').addEventListener('click', solicitarAutorizacao);
+
+  $('btnExecutar').addEventListener('click', async () => {
+    const codigo = $('codigo').value;
+    const resp = await fetch('/executar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ codigo, client_id: clientId })
+    });
+    const dados = await resp.json();
+    if (!dados.ok) alert(dados.erro || 'Erro ao executar.');
+  });
+
+  $('btnParar').addEventListener('click', async () => {
+    await fetch('/parar', { method: 'POST' });
+  });
+
+  $('btnConectar').addEventListener('click', async () => {
+    const porta = $('portaSelect').value;
+    const resp = await fetch('/conectar', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ porta: porta || null })
+    });
+    const dados = await resp.json();
+    alert(dados.ok ? 'Conectado em ' + dados.porta : (dados.erro || 'Erro ao conectar.'));
+    carregarPortas();
+  });
+
+  // Inicialização
+  carregarPortas();
+  carregarCodigosSalvosSelect();
+  normalizarECarregarCodigo(textareaCodigo.value);
+  atualizarStatus();
+  setInterval(atualizarStatus, 1500);
+</script>
+</body>
+</html>
