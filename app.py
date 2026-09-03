@@ -5,8 +5,12 @@ from flask import Flask, jsonify, render_template, request
 import serial.tools.list_ports
 from pydobot import Dobot
 from pydobot.enums import PTPMode
+from pydobot.message import Message
+from pydobot.enums.CommunicationProtocolIDs import CommunicationProtocolIDs
+from pydobot.enums.ControlValues import ControlValues
 
 app = Flask(__name__)
+
 
 
 # Lock e dicionário global de conexões ativas (porta 5000)
@@ -62,9 +66,12 @@ class RobotController:
             self._porta = porta
             try:
                 self._robot._set_queued_cmd_start_exec()
+                pose = self._robot.pose()
+                self._ultima = (pose[0], pose[1], pose[2], pose[3])
             except Exception:
                 pass
             return porta
+
 
     def desconectar(self):
         if self._robot is not None:
@@ -102,7 +109,61 @@ class RobotController:
                 except Exception:
                     pass
 
+    def limpar_alarmes(self):
+        """Limpa alarmes de limite de junta e destrava o robô."""
+        with self._lock:
+            if self._robot is None:
+                return
+            try:
+                msg = Message()
+                msg.id = CommunicationProtocolIDs.CLEAR_ALL_ALARMS_STATE
+                msg.ctrl = ControlValues.ONE
+                self._robot._send_command(msg)
+                self._robot._set_queued_cmd_start_exec()
+            except Exception:
+                pass
+
+
+    def home(self, wait=True):
+        """Executa procedimento de Home para (200.0, 0.0, 100.0, 0.0)."""
+        self._garantir_conexao()
+        self.limpar_alarmes()
+        try:
+            self._robot._set_queued_cmd_start_exec()
+        except Exception:
+            pass
+
+        # Configurar parâmetros de Home no microcontrolador Dobot (ID 30)
+        try:
+            import struct
+            msg = Message()
+            msg.id = CommunicationProtocolIDs.SET_GET_HOME_PARAMS
+            msg.ctrl = ControlValues.THREE
+            msg.params = bytearray(struct.pack('ffff', 200.0, 0.0, 100.0, 0.0))
+            self._robot._send_command(msg)
+        except Exception:
+            pass
+
+        # Disparar o comando SET_HOME_CMD (ID 31)
+        try:
+            import struct
+            msg2 = Message()
+            msg2.id = CommunicationProtocolIDs.SET_HOME_CMD
+            msg2.ctrl = ControlValues.THREE
+            msg2.params = bytearray(struct.pack('I', 0))
+            self._robot._send_command(msg2)
+        except Exception:
+            pass
+
+        # Enviar comando de movimento para (200, 0, 100, 0)
+        try:
+            self.mover(200.0, 0.0, 100.0, 0.0, wait=wait)
+        except Exception:
+            pass
+        self._ultima = (200.0, 0.0, 100.0, 0.0)
+
     def mover(self, x, y, z, r=0.0, wait=True):
+
         self._garantir_conexao()
         try:
             self._robot._set_queued_cmd_start_exec()
@@ -142,7 +203,15 @@ robot = RobotController()
 exec_lock = threading.Lock()
 stop_flag = threading.Event()
 job_lock = threading.Lock()
-job = {"executando": False, "log": [], "erro": None}
+job = {
+    "executando": False,
+    "log": [],
+    "erro": None,
+    "codigo": None,
+    "solicitante_ip": None,
+    "client_id": None
+}
+
 
 
 def _log(mensagem):
@@ -210,8 +279,11 @@ def _aplicar_comando(comando, args):
         _log(f"  -> posição atual: x={pose[0]:.1f} y={pose[1]:.1f} z={pose[2]:.1f} r={pose[3]:.1f}")
 
     elif comando == "home":
-        robot.mover(200, 0, 0, 0)
-        _log("  -> voltar para home (200, 0, 0, 0)")
+        robot.home(wait=True)
+        _log("  -> voltar para home (200, 0, 100, 0)")
+
+
+
 
     else:
         raise ValueError(f"comando desconhecido: {comando!r}")
@@ -302,6 +374,11 @@ def status():
         executando = job["executando"]
         log = list(job["log"])
         erro = job["erro"]
+        job_atual = {
+            "codigo": job["codigo"],
+            "ip": job["solicitante_ip"],
+            "client_id": job["client_id"]
+        } if executando else None
 
     posicao = None
     if conectado and not executando:
@@ -334,6 +411,7 @@ def status():
         "erro": erro,
         "posicao": posicao,
         "log": log,
+        "job_atual": job_atual,
         "clientes": lista_clientes,
         "seu_status": {
             "autorizado": autorizado_atual,
@@ -341,6 +419,113 @@ def status():
             "is_admin": is_admin_atual
         }
     })
+
+
+@app.route("/posicao")
+def obter_posicao():
+    if not robot.conectado:
+        return jsonify({"ok": False, "erro": "Dobot não conectado."}), 400
+    try:
+        pose = [round(v, 1) for v in robot.posicao()[:4]]
+        return jsonify({"ok": True, "posicao": pose})
+    except Exception as exc:
+        return jsonify({"ok": False, "erro": str(exc)}), 500
+
+
+@app.route("/jog", methods=["POST"])
+def jog():
+    if not robot.conectado:
+        return jsonify({"ok": False, "erro": "Dobot não conectado."}), 400
+
+    dados = request.get_json(silent=True) or {}
+    client_id = dados.get("client_id")
+    ip = request.remote_addr
+    is_admin = ip in ("127.0.0.1", "::1", "localhost")
+
+    with clientes_lock:
+        cliente = clientes_conectados.get(client_id)
+        autorizado = (cliente and cliente.get("autorizado")) or is_admin
+
+    if not autorizado:
+        return jsonify({"ok": False, "erro": "Movimentação não autorizada pelo administrador."}), 403
+
+    eixo = (dados.get("eixo") or "").lower().strip()
+    passo = float(dados.get("passo", 10.0))
+
+    try:
+        # Obter a posição física real para garantir sincronia absoluta com os motores
+        try:
+            pose = robot.posicao()[:4]
+            x, y, z, r = pose[0], pose[1], pose[2], pose[3]
+        except Exception:
+            atual = robot.ultima_posicao
+            x, y, z, r = atual[0], atual[1], atual[2], atual[3]
+
+        if eixo == "x+": x += passo
+        elif eixo == "x-": x -= passo
+        elif eixo == "y+": y += passo
+        elif eixo == "y-": y -= passo
+        elif eixo == "z+": z += passo
+        elif eixo == "z-": z -= passo
+        elif eixo == "home":
+            robot.home(wait=False)
+            return jsonify({"ok": True, "posicao": [200.0, 0.0, 100.0, 0.0]})
+        else:
+            return jsonify({"ok": False, "erro": f"Eixo inválido: {eixo}"}), 400
+
+
+        robot.mover(x, y, z, r, wait=False)
+        nova_pos = [round(x, 1), round(y, 1), round(z, 1), round(r, 1)]
+        return jsonify({"ok": True, "posicao": nova_pos})
+
+    except Exception as exc:
+        return jsonify({"ok": False, "erro": str(exc)}), 500
+
+
+@app.route("/limpar_alarmes", methods=["POST"])
+def limpar_alarmes():
+    if not robot.conectado:
+        return jsonify({"ok": False, "erro": "Dobot não conectado."}), 400
+    try:
+        robot.limpar_alarmes()
+        _log("  -> Alarmes do robô limpos e motores destravados.")
+        return jsonify({"ok": True})
+    except Exception as exc:
+        return jsonify({"ok": False, "erro": str(exc)}), 500
+
+
+@app.route("/atuador", methods=["POST"])
+def atuador():
+
+    if not robot.conectado:
+        return jsonify({"ok": False, "erro": "Dobot não conectado."}), 400
+
+    dados = request.get_json(silent=True) or {}
+    client_id = dados.get("client_id")
+    ip = request.remote_addr
+    is_admin = ip in ("127.0.0.1", "::1", "localhost")
+
+    with clientes_lock:
+        cliente = clientes_conectados.get(client_id)
+        autorizado = (cliente and cliente.get("autorizado")) or is_admin
+
+    if not autorizado:
+        return jsonify({"ok": False, "erro": "Ação não autorizada."}), 403
+
+    tipo = dados.get("tipo")
+    estado = bool(dados.get("estado"))
+
+    try:
+        if tipo == "ventosa":
+            robot.ventosa(estado)
+        elif tipo == "garra":
+            robot.garra(estado)
+        else:
+            return jsonify({"ok": False, "erro": "Tipo de atuador inválido"}), 400
+        return jsonify({"ok": True})
+    except Exception as exc:
+        return jsonify({"ok": False, "erro": str(exc)}), 500
+
 
 
 @app.route("/solicitar_autorizacao", methods=["POST"])
@@ -431,6 +616,9 @@ def executar():
         job["executando"] = True
         job["log"] = []
         job["erro"] = None
+        job["codigo"] = codigo
+        job["solicitante_ip"] = ip
+        job["client_id"] = client_id
     stop_flag.clear()
 
     _log(f"Iniciando execução por IP {ip} ({client_id[:8] if client_id else 'anon'})...")
@@ -445,6 +633,7 @@ def executar():
             with job_lock:
                 job["executando"] = False
             exec_lock.release()
+
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"ok": True, "status": "iniciado"})
