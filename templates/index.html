@@ -62,10 +62,6 @@
             <button id="btnLerPosicao" class="btn-sm btn-secondary">🔄 Atualizar Posição</button>
           </div>
 
-          <div style="font-size:0.8rem; color:var(--accent); background:rgba(56, 189, 248, 0.08); padding:8px 12px; border-radius:6px; margin-bottom:12px; border:1px solid rgba(56, 189, 248, 0.2);">
-            💡 <strong>Dica para Movimentar com a Mão:</strong> Além dos botões Jog abaixo, você pode pressionar e segurar o botão físico de destrava no próprio braço do robô (localizado na junta frontal) para guiá-lo livremente com a mão até a posição exata, e depois clicar em <em>"🔄 Atualizar Posição"</em> para gravar!
-          </div>
-
           <!-- Controle de Passo — event passado explicitamente -->
           <div class="step-selector">
             <span>Passo de Movimento:</span>
@@ -150,9 +146,11 @@
           <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:10px; padding:10px; background:rgba(255,255,255,0.02); border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
             <label style="font-size:0.85rem; color:var(--muted);">✏️ Escrever Texto:</label>
             <input type="text" id="textoEscrever" placeholder="Digite o nome ou texto..." value="ROBOT" style="flex:1; padding:6px 10px; font-size:0.85rem; border-radius:6px; border:1px solid rgba(255,255,255,0.12); background:rgba(0,0,0,0.2); color:#e2e8f0;">
-            <input type="number" id="escreverX" value="180" title="X inicial" style="width:64px; padding:4px 8px; font-size:0.85rem;">
-            <input type="number" id="escreverY" value="-40" title="Y inicial" style="width:64px; padding:4px 8px; font-size:0.85rem;">
-            <input type="number" id="escreverZ" value="-10" title="Z de desenho" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverX" value="231.4" title="X inicial" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverY" value="-48.3" title="Y inicial" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverZ" value="-43.5" title="Z de desenho" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverZInicio" value="" title="Z de início/aproximação (opcional)" placeholder="Z início" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverR" value="0" title="R" style="width:64px; padding:4px 8px; font-size:0.85rem;">
             <input type="number" id="escreverEsp" value="4" title="Espaçamento" style="width:64px; padding:4px 8px; font-size:0.85rem;">
             <button id="btnGerarEscrita" class="btn-sm btn-run" style="color:#0b1220;">✏️ Gerar Escrita</button>
           </div>

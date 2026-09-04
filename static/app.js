@@ -219,16 +219,22 @@ $('btnGerarEscrita').addEventListener('click', async () => {
     alert('Digite um texto para escrever.');
     return;
   }
-  const x = parseFloat($('escreverX').value) || 180.0;
-  const y = parseFloat($('escreverY').value) || -40.0;
-  const z = parseFloat($('escreverZ').value) || -10.0;
+  const x = parseFloat($('escreverX').value) || 231.4;
+  const y = parseFloat($('escreverY').value) || -48.3;
+  const z = parseFloat($('escreverZ').value) || -43.5;
+  const zInicioRaw = $('escreverZInicio').value;
+  const zInicio = zInicioRaw === '' || zInicioRaw === null || zInicioRaw === undefined ? undefined : parseFloat(zInicioRaw);
+  const r = parseFloat($('escreverR').value) || 0.0;
   const esp = parseFloat($('escreverEsp').value) || 4.0;
+
+  const payload = { texto, x, y, z, espacamento: esp, r };
+  if (Number.isFinite(zInicio)) payload.z_inicio = zInicio;
 
   try {
     const resp = await fetch('/escrever', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ texto, x, y, z, espacamento: esp })
+      body: JSON.stringify(payload)
     });
     const dados = await resp.json();
     if (!dados.ok) {
@@ -345,7 +351,7 @@ async function carregarPortas() {
 const ELEMENTOS_CONTROLE = [
   'portaSelect','btnConectar','btnLerPosicao',
   'btnCapturarA','btnCapturarB','btnGerarCodigoAB',
-  'btnGerarEscrita','textoEscrever','escreverX','escreverY','escreverZ','escreverEsp',
+  'btnGerarEscrita','textoEscrever','escreverX','escreverY','escreverZ','escreverZInicio','escreverR','escreverEsp',
   'btnExecutar','codigo','savedScriptsSelect','btnPuxarCodigo','btnFormatarLinhas',
   'btnSalvarCodigo','btnBaixarCodigo','inputAbrirArquivo'
 ];

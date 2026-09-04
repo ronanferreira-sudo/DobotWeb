@@ -152,38 +152,18 @@ class RobotController:
         self.limpar_alarmes()
         try:
             self._robot._set_queued_cmd_start_exec()
-        except Exception:
-            pass
-
-        # Configurar parâmetros de Home no microcontrolador Dobot (ID 30)
+        except Exception as exc:
+            logger.warning("Falha ao iniciar fila antes do home: %s", exc)
         try:
-            msg = Message()
-            msg.id = CommunicationProtocolIDs.SET_GET_HOME_PARAMS
-            msg.ctrl = ControlValues.THREE
-            msg.params = bytearray(struct.pack('ffff', 200.0, 0.0, 100.0, 0.0))
-            self._robot._send_command(msg)
-        except Exception:
-            pass
-
-        # Disparar o comando SET_HOME_CMD (ID 31)
-        try:
-            msg2 = Message()
-            msg2.id = CommunicationProtocolIDs.SET_HOME_CMD
-            msg2.ctrl = ControlValues.THREE
-            msg2.params = bytearray(struct.pack('I', 0))
-            self._robot._send_command(msg2)
-        except Exception:
-            pass
-
-        # Enviar comando de movimento para (200, 0, 100, 0)
-        try:
-            self.mover(200.0, 0.0, 100.0, 0.0, wait=wait)
-        except Exception:
-            pass
+            self._robot._set_ptp_cmd(200.0, 0.0, 100.0, 0.0, mode=PTPMode.MOVJ_XYZ, wait=wait)
+        except Exception as exc:
+            logger.error("Falha no movimento de home: %s", exc)
+        self.limpar_alarmes()
         self._ultima = (200.0, 0.0, 100.0, 0.0)
 
     def mover(self, x, y, z, r=0.0, wait=True):
         self._garantir_conexao()
+        self.limpar_alarmes()
         try:
             self._robot._set_queued_cmd_start_exec()
         except Exception:
@@ -754,31 +734,33 @@ FONTE_5X7 = {
 CARACTERES_SUPORTADOS = "".join(sorted(FONTE_5X7.keys()))
 
 
-def _escrever_texto_em_comandos(texto, x_inicio, y_inicio, z_desenho, espacamento=4.0, altura_ponto=1.0):
+def _escrever_texto_em_comandos(texto, x_inicio, y_inicio, z_desenho, espacamento=4.0, altura_ponto=1.0, z_inicio=None, r=0.0):
     comandos = []
     x = x_inicio
+    z_aprox = z_inicio if z_inicio is not None else z_desenho + 15.0
     for caractere in str(texto):
         ch = caractere.upper()
         padrao = FONTE_5X7.get(ch)
         if not padrao:
-            comandos.append(f"desenhar {x:.1f} {y_inicio:.1f} {z_desenho:.1f}")
+            comandos.append(f"desenhar {x:.1f} {y_inicio:.1f} {z_desenho:.1f} {r:.1f}")
             x += espacamento * 0.6
             continue
 
         linhas_ativas = []
         for linha_idx, linha in enumerate(padrao):
             pontos_na_linha = []
-            for col_idx, ch in enumerate(linha):
-                if ch == "#":
+            for col_idx, pixel in enumerate(linha):
+                if pixel == "#":
                     pontos_na_linha.append((x + col_idx * espacamento, y_inicio - linha_idx * espacamento))
             if pontos_na_linha:
                 linhas_ativas.append(pontos_na_linha)
 
         if linhas_ativas:
-            comandos.append(f"mover {linhas_ativas[0][0][0]:.1f} {linhas_ativas[0][0][1]:.1f} {z_desenho + altura_ponto:.1f}")
+            comandos.append(f"mover {linhas_ativas[0][0][0]:.1f} {linhas_ativas[0][0][1]:.1f} {z_aprox:.1f} {r:.1f}")
             for pontos in linhas_ativas:
                 for px, py in pontos:
-                    comandos.append(f"desenhar {px:.1f} {py:.1f} {z_desenho:.1f}")
+                    comandos.append(f"desenhar {px:.1f} {py:.1f} {z_desenho:.1f} {r:.1f}")
+            comandos.append(f"mover {linhas_ativas[-1][-1][0]:.1f} {linhas_ativas[-1][-1][1]:.1f} {z_aprox:.1f} {r:.1f}")
 
         x += espacamento * 5 + espacamento * 0.8
     return comandos
@@ -795,23 +777,25 @@ def _aplicar_comando(comando, args):
 
     elif comando == "desenhar":
         if len(args) < 2:
-            raise ValueError("uso: desenhar <x> <y> [z]")
+            raise ValueError("uso: desenhar <x> <y> [z] [r]")
         x, y = float(args[0]), float(args[1])
-        _, _, uz, ur = robot.ultima_posicao
-        z = float(args[2]) if len(args) >= 3 else uz
-        robot.mover(x, y, z, ur)
-        _log(f"  -> desenhar até x={x} y={y} z={z}")
+        z = float(args[2]) if len(args) >= 3 else robot.ultima_posicao[2]
+        r = float(args[3]) if len(args) >= 4 else 0.0
+        robot.mover(x, y, z, r)
+        _log(f"  -> desenhar até x={x} y={y} z={z} r={r}")
 
     elif comando == "escrever":
         if not args:
-            raise ValueError("uso: escrever <texto> [x] [y] [z] [espaçamento]")
+            raise ValueError("uso: escrever <texto> [x] [y] [z] [espaçamento] [z_inicio] [r]")
         texto = " ".join(args[:1]) if len(args) >= 1 else ""
-        x = float(args[1]) if len(args) >= 2 else 180.0
-        y = float(args[2]) if len(args) >= 3 else -40.0
-        z = float(args[3]) if len(args) >= 4 else -10.0
+        x = float(args[1]) if len(args) >= 2 else 231.4
+        y = float(args[2]) if len(args) >= 3 else -48.3
+        z = float(args[3]) if len(args) >= 4 else -43.5
         esp = float(args[4]) if len(args) >= 5 else 4.0
+        z_inicio = float(args[5]) if len(args) >= 6 else None
+        r = float(args[6]) if len(args) >= 7 else 0.0
 
-        cmds = _escrever_texto_em_comandos(texto, x, y, z, espacamento=esp)
+        cmds = _escrever_texto_em_comandos(texto, x, y, z, espacamento=esp, z_inicio=z_inicio, r=r)
         if not cmds:
             raise ValueError("Nenhum comando gerado para o texto informado.")
         for cmd in cmds:
@@ -1176,16 +1160,19 @@ def conectar():
 def escrever():
     dados = request.get_json(silent=True) or {}
     texto = (dados.get("texto") or "").strip()
-    x = float(dados.get("x", 180.0))
-    y = float(dados.get("y", -40.0))
-    z = float(dados.get("z", -10.0))
+    x = float(dados.get("x", 231.4))
+    y = float(dados.get("y", -48.3))
+    z = float(dados.get("z", -43.5))
     esp = float(dados.get("espacamento", 4.0))
+    z_inicio = dados.get("z_inicio")
+    z_inicio = float(z_inicio) if z_inicio is not None else None
+    r = float(dados.get("r", 0.0))
 
     if not texto:
         return jsonify({"ok": False, "erro": "Texto vazio."}), 400
 
     try:
-        cmds = _escrever_texto_em_comandos(texto, x, y, z, espacamento=esp)
+        cmds = _escrever_texto_em_comandos(texto, x, y, z, espacamento=esp, z_inicio=z_inicio, r=r)
         codigo = "\n".join(cmds)
         return jsonify({"ok": True, "codigo": codigo})
     except Exception as exc:
