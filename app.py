@@ -1,3 +1,5 @@
+import logging
+import struct
 import threading
 import time
 
@@ -9,11 +11,26 @@ from pydobot.message import Message
 from pydobot.enums.CommunicationProtocolIDs import CommunicationProtocolIDs
 from pydobot.enums.ControlValues import ControlValues
 
+# ---------------------------------------------------------------------------
+# Logging estruturado com timestamp
+# ---------------------------------------------------------------------------
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%Y-%m-%d %H:%M:%S",
+)
+logger = logging.getLogger(__name__)
+
 app = Flask(__name__)
 
+# Tamanho máximo permitido para um script enviado via /executar (50 KB)
+MAX_CODIGO_BYTES = 50 * 1024
 
+# Timeout de inatividade de cliente (segundos sem heartbeat)
+CLIENTE_TIMEOUT_S = 20.0
 
-# Lock e dicionário global de conexões ativas (porta 5000)
+# Lock e dicionário global de conexões ativas
 clientes_lock = threading.Lock()
 clientes_conectados = {}
 
@@ -53,7 +70,7 @@ class RobotController:
     def conectar(self, porta=None):
         """Conecta na porta informada ou, se None, na primeira porta livre."""
         with self._lock:
-            self.desconectar()
+            self._desconectar_interno()
             if porta is None:
                 portas = self.listar_portas()
                 if not portas:
@@ -70,10 +87,11 @@ class RobotController:
                 self._ultima = (pose[0], pose[1], pose[2], pose[3])
             except Exception:
                 pass
+            logger.info("Dobot conectado na porta %s", porta)
             return porta
 
-
-    def desconectar(self):
+    def _desconectar_interno(self):
+        """Desconecta sem adquirir o lock (deve ser chamado de dentro do lock)."""
         if self._robot is not None:
             try:
                 self._robot.close()
@@ -81,6 +99,11 @@ class RobotController:
                 pass
             self._robot = None
             self._porta = None
+
+    def desconectar(self):
+        """Desconecta com segurança de thread."""
+        with self._lock:
+            self._desconectar_interno()
 
     def auto_conectar(self):
         try:
@@ -123,7 +146,6 @@ class RobotController:
             except Exception:
                 pass
 
-
     def home(self, wait=True):
         """Executa procedimento de Home para (200.0, 0.0, 100.0, 0.0)."""
         self._garantir_conexao()
@@ -135,7 +157,6 @@ class RobotController:
 
         # Configurar parâmetros de Home no microcontrolador Dobot (ID 30)
         try:
-            import struct
             msg = Message()
             msg.id = CommunicationProtocolIDs.SET_GET_HOME_PARAMS
             msg.ctrl = ControlValues.THREE
@@ -146,7 +167,6 @@ class RobotController:
 
         # Disparar o comando SET_HOME_CMD (ID 31)
         try:
-            import struct
             msg2 = Message()
             msg2.id = CommunicationProtocolIDs.SET_HOME_CMD
             msg2.ctrl = ControlValues.THREE
@@ -163,7 +183,6 @@ class RobotController:
         self._ultima = (200.0, 0.0, 100.0, 0.0)
 
     def mover(self, x, y, z, r=0.0, wait=True):
-
         self._garantir_conexao()
         try:
             self._robot._set_queued_cmd_start_exec()
@@ -193,7 +212,6 @@ class RobotController:
         time.sleep(ms / 1000.0)
 
 
-
 robot = RobotController()
 
 # ---------------------------------------------------------------------------
@@ -213,7 +231,6 @@ job = {
 }
 
 
-
 def _log(mensagem):
     with job_lock:
         job["log"].append(mensagem)
@@ -226,6 +243,546 @@ def _parse_booleano(texto):
     if t in ("off", "desligar", "desligado", "abrir", "soltar", "desativar", "0", "false"):
         return False
     raise ValueError(f"valor inválido: {texto!r} (use on/off, ligar/desligar, abrir/fechar ou 1/0)")
+
+FONTE_5X7 = {
+    " ": [
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+    ],
+    "A": [
+        "  #  ",
+        " # # ",
+        "#   #",
+        "#####",
+        "#   #",
+        "#   #",
+        "#   #",
+    ],
+    "B": [
+        "#### ",
+        "#   #",
+        "#   #",
+        "#### ",
+        "#   #",
+        "#   #",
+        "#### ",
+    ],
+    "C": [
+        " ####",
+        "#    ",
+        "#    ",
+        "#    ",
+        "#    ",
+        "#    ",
+        " ####",
+    ],
+    "D": [
+        "#### ",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#### ",
+    ],
+    "E": [
+        "#####",
+        "#    ",
+        "#    ",
+        "#### ",
+        "#    ",
+        "#    ",
+        "#####",
+    ],
+    "F": [
+        "#####",
+        "#    ",
+        "#    ",
+        "#### ",
+        "#    ",
+        "#    ",
+        "#    ",
+    ],
+    "G": [
+        " ####",
+        "#    ",
+        "#    ",
+        "#  ##",
+        "#   #",
+        "#   #",
+        " ### ",
+    ],
+    "H": [
+        "#   #",
+        "#   #",
+        "#   #",
+        "#####",
+        "#   #",
+        "#   #",
+        "#   #",
+    ],
+    "I": [
+        "#####",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "#####",
+    ],
+    "J": [
+        "    #",
+        "    #",
+        "    #",
+        "    #",
+        "#   #",
+        "#   #",
+        " ### ",
+    ],
+    "K": [
+        "#   #",
+        "#  # ",
+        "# #  ",
+        "##   ",
+        "# #  ",
+        "#  # ",
+        "#   #",
+    ],
+    "L": [
+        "#    ",
+        "#    ",
+        "#    ",
+        "#    ",
+        "#    ",
+        "#    ",
+        "#####",
+    ],
+    "M": [
+        "#   #",
+        "## ##",
+        "# # #",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+    ],
+    "N": [
+        "#   #",
+        "##  #",
+        "# # #",
+        "#  ##",
+        "#   #",
+        "#   #",
+        "#   #",
+    ],
+    "O": [
+        " ### ",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        " ### ",
+    ],
+    "P": [
+        "#### ",
+        "#   #",
+        "#   #",
+        "#### ",
+        "#    ",
+        "#    ",
+        "#    ",
+    ],
+    "Q": [
+        " ### ",
+        "#   #",
+        "#   #",
+        "#   #",
+        "# # #",
+        "#  # ",
+        " ## #",
+    ],
+    "R": [
+        "#### ",
+        "#   #",
+        "#   #",
+        "#### ",
+        "# #  ",
+        "#  # ",
+        "#   #",
+    ],
+    "S": [
+        " ####",
+        "#    ",
+        "#    ",
+        " ### ",
+        "    #",
+        "    #",
+        "#### ",
+    ],
+    "T": [
+        "#####",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+    ],
+    "U": [
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        " ### ",
+    ],
+    "V": [
+        "#   #",
+        "#   #",
+        "#   #",
+        "#   #",
+        " # # ",
+        " # # ",
+        "  #  ",
+    ],
+    "W": [
+        "#   #",
+        "#   #",
+        "#   #",
+        "# # #",
+        "# # #",
+        " # # ",
+        " # # ",
+    ],
+    "X": [
+        "#   #",
+        "#   #",
+        " # # ",
+        "  #  ",
+        " # # ",
+        "#   #",
+        "#   #",
+    ],
+    "Y": [
+        "#   #",
+        "#   #",
+        " # # ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+    ],
+    "Z": [
+        "#####",
+        "    #",
+        "   # ",
+        "  #  ",
+        " #   ",
+        "#    ",
+        "#####",
+    ],
+    "0": [
+        " ### ",
+        "#   #",
+        "#  ##",
+        "# # #",
+        "##  #",
+        "#   #",
+        " ### ",
+    ],
+    "1": [
+        "  #  ",
+        " ##  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        " ### ",
+    ],
+    "2": [
+        " ### ",
+        "#   #",
+        "    #",
+        "  ## ",
+        " #   ",
+        "#    ",
+        "#####",
+    ],
+    "3": [
+        " ### ",
+        "#   #",
+        "    #",
+        "  ## ",
+        "    #",
+        "#   #",
+        " ### ",
+    ],
+    "4": [
+        "#   #",
+        "#   #",
+        "#   #",
+        "#####",
+        "    #",
+        "    #",
+        "    #",
+    ],
+    "5": [
+        "#####",
+        "#    ",
+        "#    ",
+        "#### ",
+        "    #",
+        "    #",
+        "#### ",
+    ],
+    "6": [
+        " ### ",
+        "#    ",
+        "#    ",
+        "#### ",
+        "#   #",
+        "#   #",
+        " ### ",
+    ],
+    "7": [
+        "#####",
+        "    #",
+        "   # ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+    ],
+    "8": [
+        " ### ",
+        "#   #",
+        "#   #",
+        " ### ",
+        "#   #",
+        "#   #",
+        " ### ",
+    ],
+    "9": [
+        " ### ",
+        "#   #",
+        "#   #",
+        " ####",
+        "    #",
+        "    #",
+        " ### ",
+    ],
+    ".": [
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "  #  ",
+        "  #  ",
+    ],
+    ",": [
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "  #  ",
+        "  #  ",
+        " #   ",
+    ],
+    "!": [
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "  #  ",
+        "     ",
+        "  #  ",
+    ],
+    "?": [
+        " ### ",
+        "#   #",
+        "    #",
+        "  ## ",
+        "  #  ",
+        "     ",
+        "  #  ",
+    ],
+    "-": [
+        "     ",
+        "     ",
+        "#####",
+        "     ",
+        "#####",
+        "     ",
+        "     ",
+    ],
+    "_": [
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "     ",
+        "#####",
+    ],
+    "+": [
+        "     ",
+        "  #  ",
+        "  #  ",
+        "#####",
+        "  #  ",
+        "  #  ",
+        "     ",
+    ],
+    "/": [
+        "    #",
+        "    #",
+        "   # ",
+        "  #  ",
+        " #   ",
+        "#    ",
+        "#    ",
+    ],
+    "(": [
+        "  #  ",
+        " #   ",
+        "#    ",
+        "#    ",
+        "#    ",
+        " #   ",
+        "  #  ",
+    ],
+    ")": [
+        "  #  ",
+        "   # ",
+        "    #",
+        "    #",
+        "    #",
+        "   # ",
+        "  #  ",
+    ],
+    ":": [
+        "     ",
+        "  #  ",
+        "  #  ",
+        "     ",
+        "  #  ",
+        "  #  ",
+        "     ",
+    ],
+    ";": [
+        "     ",
+        "  #  ",
+        "  #  ",
+        "     ",
+        "  #  ",
+        "  #  ",
+        " #   ",
+    ],
+    "*": [
+        "     ",
+        "# # #",
+        " ### ",
+        "#####",
+        " ### ",
+        "# # #",
+        "     ",
+    ],
+    "=": [
+        "     ",
+        "#####",
+        "     ",
+        "#####",
+        "     ",
+        "#####",
+        "     ",
+    ],
+    "@": [
+        " ### ",
+        "#   #",
+        "# ###",
+        "# # #",
+        "# ###",
+        "#    ",
+        " ### ",
+    ],
+    "#": [
+        " # # ",
+        " # # ",
+        "#####",
+        " # # ",
+        "#####",
+        " # # ",
+        " # # ",
+    ],
+    "$": [
+        "  #  ",
+        " ####",
+        "#    ",
+        " ### ",
+        "    #",
+        "#### ",
+        "  #  ",
+    ],
+    "%": [
+        "#    ",
+        "    #",
+        "   # ",
+        "  #  ",
+        " #   ",
+        "#    ",
+        "    #",
+    ],
+    "&": [
+        " ### ",
+        "#   #",
+        "#    ",
+        " ##  ",
+        "#  # ",
+        "#  # ",
+        " ## #",
+    ],
+}
+
+CARACTERES_SUPORTADOS = "".join(sorted(FONTE_5X7.keys()))
+
+
+def _escrever_texto_em_comandos(texto, x_inicio, y_inicio, z_desenho, espacamento=4.0, altura_ponto=1.0):
+    comandos = []
+    x = x_inicio
+    for caractere in str(texto):
+        ch = caractere.upper()
+        padrao = FONTE_5X7.get(ch)
+        if not padrao:
+            comandos.append(f"desenhar {x:.1f} {y_inicio:.1f} {z_desenho:.1f}")
+            x += espacamento * 0.6
+            continue
+
+        linhas_ativas = []
+        for linha_idx, linha in enumerate(padrao):
+            pontos_na_linha = []
+            for col_idx, ch in enumerate(linha):
+                if ch == "#":
+                    pontos_na_linha.append((x + col_idx * espacamento, y_inicio - linha_idx * espacamento))
+            if pontos_na_linha:
+                linhas_ativas.append(pontos_na_linha)
+
+        if linhas_ativas:
+            comandos.append(f"mover {linhas_ativas[0][0][0]:.1f} {linhas_ativas[0][0][1]:.1f} {z_desenho + altura_ponto:.1f}")
+            for pontos in linhas_ativas:
+                for px, py in pontos:
+                    comandos.append(f"desenhar {px:.1f} {py:.1f} {z_desenho:.1f}")
+
+        x += espacamento * 5 + espacamento * 0.8
+    return comandos
+
 
 def _aplicar_comando(comando, args):
     if comando == "mover":
@@ -244,6 +801,23 @@ def _aplicar_comando(comando, args):
         z = float(args[2]) if len(args) >= 3 else uz
         robot.mover(x, y, z, ur)
         _log(f"  -> desenhar até x={x} y={y} z={z}")
+
+    elif comando == "escrever":
+        if not args:
+            raise ValueError("uso: escrever <texto> [x] [y] [z] [espaçamento]")
+        texto = " ".join(args[:1]) if len(args) >= 1 else ""
+        x = float(args[1]) if len(args) >= 2 else 180.0
+        y = float(args[2]) if len(args) >= 3 else -40.0
+        z = float(args[3]) if len(args) >= 4 else -10.0
+        esp = float(args[4]) if len(args) >= 5 else 4.0
+
+        cmds = _escrever_texto_em_comandos(texto, x, y, z, espacamento=esp)
+        if not cmds:
+            raise ValueError("Nenhum comando gerado para o texto informado.")
+        for cmd in cmds:
+            partes = cmd.split()
+            _aplicar_comando(partes[0], partes[1:])
+        return
 
     elif comando == "garra":
         if not args:
@@ -281,9 +855,6 @@ def _aplicar_comando(comando, args):
     elif comando == "home":
         robot.home(wait=True)
         _log("  -> voltar para home (200, 0, 100, 0)")
-
-
-
 
     else:
         raise ValueError(f"comando desconhecido: {comando!r}")
@@ -324,15 +895,19 @@ def _executar_script(codigo):
 # Funções de auxílio para conexões de clientes
 # ---------------------------------------------------------------------------
 
-def _registrar_ou_atualizar_cliente(client_id, ip):
+def _registrar_ou_atualizar_cliente(client_id, ip, nome=None):
     if not client_id:
         return None
     agora = time.time()
     is_admin = ip in ("127.0.0.1", "::1", "localhost")
     with clientes_lock:
-        # Remover inativos (sem heartbeat por mais de 6 segundos)
-        inativos = [cid for cid, info in clientes_conectados.items() if agora - info["last_seen"] > 6.0]
+        # Remover inativos (sem heartbeat por mais de CLIENTE_TIMEOUT_S segundos)
+        inativos = [
+            cid for cid, info in clientes_conectados.items()
+            if agora - info["last_seen"] > CLIENTE_TIMEOUT_S
+        ]
         for cid in inativos:
+            logger.info("Cliente inativo removido: %s", cid[:8])
             del clientes_conectados[cid]
 
         if client_id not in clientes_conectados:
@@ -341,12 +916,15 @@ def _registrar_ou_atualizar_cliente(client_id, ip):
                 "last_seen": agora,
                 "autorizado": is_admin,  # Host local entra pré-autorizado
                 "solicitou": False,
-                "is_admin": is_admin
+                "is_admin": is_admin,
+                "nome": nome or ""
             }
         else:
             c = clientes_conectados[client_id]
             c["last_seen"] = agora
             c["ip"] = ip
+            if nome:
+                c["nome"] = nome
             if is_admin:
                 c["is_admin"] = True
                 c["autorizado"] = True
@@ -392,6 +970,7 @@ def status():
             {
                 "id": cid,
                 "ip": info["ip"],
+                "nome": info.get("nome", ""),
                 "autorizado": info["autorizado"],
                 "solicitou": info["solicitou"],
                 "is_admin": info["is_admin"],
@@ -437,6 +1016,11 @@ def jog():
     if not robot.conectado:
         return jsonify({"ok": False, "erro": "Dobot não conectado."}), 400
 
+    # Bloquear jog manual enquanto um script estiver em execução
+    with job_lock:
+        if job["executando"]:
+            return jsonify({"ok": False, "erro": "Não é possível usar o jog enquanto um script está em execução."}), 409
+
     dados = request.get_json(silent=True) or {}
     client_id = dados.get("client_id")
     ip = request.remote_addr
@@ -461,18 +1045,19 @@ def jog():
             atual = robot.ultima_posicao
             x, y, z, r = atual[0], atual[1], atual[2], atual[3]
 
-        if eixo == "x+": x += passo
+        if eixo == "x+":   x += passo
         elif eixo == "x-": x -= passo
         elif eixo == "y+": y += passo
         elif eixo == "y-": y -= passo
         elif eixo == "z+": z += passo
         elif eixo == "z-": z -= passo
+        elif eixo == "r+": r += passo
+        elif eixo == "r-": r -= passo
         elif eixo == "home":
             robot.home(wait=False)
             return jsonify({"ok": True, "posicao": [200.0, 0.0, 100.0, 0.0]})
         else:
             return jsonify({"ok": False, "erro": f"Eixo inválido: {eixo}"}), 400
-
 
         robot.mover(x, y, z, r, wait=False)
         nova_pos = [round(x, 1), round(y, 1), round(z, 1), round(r, 1)]
@@ -527,18 +1112,21 @@ def atuador():
         return jsonify({"ok": False, "erro": str(exc)}), 500
 
 
-
 @app.route("/solicitar_autorizacao", methods=["POST"])
 def solicitar_autorizacao():
     dados = request.get_json(silent=True) or {}
     client_id = dados.get("client_id")
+    nome = (dados.get("nome") or "").strip()
     if not client_id:
         return jsonify({"ok": False, "erro": "client_id não fornecido"}), 400
     with clientes_lock:
         if client_id in clientes_conectados:
             clientes_conectados[client_id]["solicitou"] = True
+            if nome:
+                clientes_conectados[client_id]["nome"] = nome
             ip = clientes_conectados[client_id]["ip"]
-            _log(f"  -> Usuário IP {ip} ({client_id[:8]}) solicitou autorização de execução.")
+            nome_exibido = clientes_conectados[client_id].get("nome") or "Sem nome"
+            _log(f"  -> Usuário {nome_exibido} IP {ip} ({client_id[:8]}) solicitou autorização de execução.")
             return jsonify({"ok": True})
         return jsonify({"ok": False, "erro": "Cliente não encontrado"}), 404
 
@@ -584,6 +1172,26 @@ def conectar():
     return jsonify({"ok": True, "porta": escolhida})
 
 
+@app.route("/escrever", methods=["POST"])
+def escrever():
+    dados = request.get_json(silent=True) or {}
+    texto = (dados.get("texto") or "").strip()
+    x = float(dados.get("x", 180.0))
+    y = float(dados.get("y", -40.0))
+    z = float(dados.get("z", -10.0))
+    esp = float(dados.get("espacamento", 4.0))
+
+    if not texto:
+        return jsonify({"ok": False, "erro": "Texto vazio."}), 400
+
+    try:
+        cmds = _escrever_texto_em_comandos(texto, x, y, z, espacamento=esp)
+        codigo = "\n".join(cmds)
+        return jsonify({"ok": True, "codigo": codigo})
+    except Exception as exc:
+        return jsonify({"ok": False, "erro": str(exc)}), 500
+
+
 @app.route("/executar", methods=["POST"])
 def executar():
     dados = request.get_json(silent=True) or {}
@@ -612,6 +1220,11 @@ def executar():
         exec_lock.release()
         return jsonify({"ok": False, "erro": "O código está vazio."}), 400
 
+    # Limitar tamanho do código para evitar abuso
+    if len(codigo.encode("utf-8")) > MAX_CODIGO_BYTES:
+        exec_lock.release()
+        return jsonify({"ok": False, "erro": f"Código muito grande (máximo {MAX_CODIGO_BYTES // 1024} KB)."}), 413
+
     with job_lock:
         job["executando"] = True
         job["log"] = []
@@ -622,18 +1235,19 @@ def executar():
     stop_flag.clear()
 
     _log(f"Iniciando execução por IP {ip} ({client_id[:8] if client_id else 'anon'})...")
+    logger.info("Execução iniciada por IP %s client=%s", ip, client_id[:8] if client_id else "anon")
 
     def run():
         try:
             _executar_script(codigo)
         except Exception as exc:
+            logger.error("Erro na execução: %s", exc)
             with job_lock:
                 job["erro"] = str(exc)
         finally:
             with job_lock:
                 job["executando"] = False
             exec_lock.release()
-
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({"ok": True, "status": "iniciado"})
@@ -647,15 +1261,15 @@ def parar():
     except Exception as exc:
         return jsonify({"ok": False, "erro": str(exc)}), 500
     _log("Parada de emergência acionada.")
+    logger.warning("Parada de emergência acionada.")
     return jsonify({"ok": True})
-
 
 
 if __name__ == "__main__":
     if robot.auto_conectar():
-        print(f"[OK] Dobot conectado na porta {robot.porta}")
+        logger.info("Dobot conectado na porta %s", robot.porta)
     else:
-        print("[AVISO] Dobot Magician Lite não encontrado. Use o botão 'Conectar' da interface.")
+        logger.warning("Dobot Magician Lite não encontrado. Use o botão 'Conectar' da interface.")
 
     print("Acesse a interface em:")
     print("  - Neste notebook:   http://127.0.0.1:5000")

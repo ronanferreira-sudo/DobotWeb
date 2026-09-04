@@ -1,4 +1,4 @@
-#!C:\projetos\DobotWeb\.venv\Scripts\python.exe
+#!C:\Users\Admin\Desktop\DobotWeb-master\.venv\Scripts\python.exe
 #
 # Very simple serial terminal
 #

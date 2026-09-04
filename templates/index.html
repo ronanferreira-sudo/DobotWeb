@@ -4,161 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Controle do Dobot Magician Lite</title>
-<style>
-  :root {
-    --bg: #0f172a;
-    --card: #1e293b;
-    --accent: #38bdf8;
-    --ok: #22c55e;
-    --err: #ef4444;
-    --warn: #f59e0b;
-    --text: #e2e8f0;
-    --muted: #94a3b8;
-    --border: #334155;
-  }
-  * { box-sizing: border-box; }
-  body {
-    margin: 0;
-    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-    background: var(--bg);
-    color: var(--text);
-    padding: 24px;
-  }
-  
-  /* Header e Navegação por Abas */
-  .header-main { display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 20px; flex-wrap: wrap; gap: 16px; }
-  h1 { margin: 0; font-size: 1.6rem; }
-  .sub { color: var(--muted); margin: 4px 0 0; font-size: 0.9rem; }
-  
-  .tabs-nav { display: flex; gap: 8px; background: #070e1a; padding: 6px; border-radius: 12px; border: 1px solid var(--border); }
-  .tab-btn {
-    background: transparent; color: var(--muted); border: none; padding: 10px 18px;
-    font-weight: 600; font-size: 0.95rem; border-radius: 8px; cursor: pointer;
-    display: flex; align-items: center; gap: 8px; transition: all 0.2s ease;
-  }
-  .tab-btn:hover { color: var(--text); background: rgba(255,255,255,0.05); }
-  .tab-btn.active { background: var(--card); color: var(--accent); border: 1px solid var(--border); }
-
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
-
-  /* Cards e Status */
-  .status { display: flex; flex-wrap: wrap; gap: 16px; margin-bottom: 20px; }
-  .stat { background: var(--card); border-radius: 12px; padding: 16px; flex: 1; min-width: 160px; }
-  .stat .label { color: var(--muted); font-size: .8rem; text-transform: uppercase; letter-spacing: .05em; }
-  .stat .value { font-size: 1.15rem; margin-top: 4px; font-weight: 600; }
-  
-  .grid { display: grid; grid-template-columns: 1.2fr 1fr; gap: 24px; margin-bottom: 24px; }
-  @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
-  .card { background: var(--card); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
-  
-  .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 6px; }
-  .dot.on { background: var(--ok); }
-  .dot.off { background: var(--err); }
-  .dot.run { background: var(--warn); }
-
-  /* Painel de Ensino Manual & Controle Jog */
-  .teach-panel {
-    background: #0b1220; border: 1px solid var(--border); border-radius: 10px;
-    padding: 16px; margin-bottom: 16px;
-  }
-  .teach-title { font-size: 1rem; font-weight: 600; color: var(--accent); margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center; }
-  
-  .jog-container {
-    display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 10px; margin-bottom: 14px;
-    background: #070e1a; padding: 12px; border-radius: 8px; border: 1px solid var(--border);
-  }
-  .jog-group { display: flex; flex-direction: column; gap: 6px; text-align: center; }
-  .jog-group label { font-size: 0.75rem; color: var(--muted); font-weight: 600; text-transform: uppercase; }
-  .jog-btn-row { display: flex; gap: 6px; justify-content: center; }
-  .btn-jog {
-    background: #1e293b; color: #38bdf8; border: 1px solid var(--border);
-    padding: 8px; font-size: 0.9rem; font-weight: 700; border-radius: 6px; flex: 1;
-  }
-  .btn-jog:hover:not(:disabled) { background: #0284c7; color: white; }
-
-  .step-selector { display: flex; gap: 6px; align-items: center; margin-bottom: 10px; font-size: 0.85rem; color: var(--muted); }
-  .btn-step { background: #1e293b; color: var(--text); border: 1px solid var(--border); padding: 4px 10px; font-size: 0.8rem; border-radius: 6px; }
-  .btn-step.active { background: var(--accent); color: #0b1220; border-color: var(--accent); }
-
-  .point-boxes { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px; }
-  @media (max-width: 600px) { .point-boxes { grid-template-columns: 1fr; } }
-  .point-box { background: #070e1a; border: 1px solid var(--border); padding: 12px; border-radius: 8px; }
-  .point-box h4 { margin: 0 0 8px; font-size: 0.85rem; color: var(--muted); text-transform: uppercase; }
-  .point-coords { font-family: monospace; font-size: 0.9rem; color: #38bdf8; margin-bottom: 8px; font-weight: 600; }
-
-  /* Container do editor com indexação de linhas */
-  .editor-wrapper {
-    display: flex; background: #0b1220; border: 1px solid var(--border);
-    border-radius: 8px; overflow: hidden; height: 360px;
-  }
-  .line-numbers {
-    padding: 12px 8px; background: #070e1a; color: #475569;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: .9rem;
-    line-height: 1.5; text-align: right; user-select: none;
-    border-right: 1px solid var(--border); min-width: 44px; overflow-y: hidden;
-    white-space: pre;
-  }
-  textarea {
-    flex: 1; height: 100%; background: transparent; color: #d7e3ff;
-    border: none; outline: none; padding: 12px;
-    font-family: "Cascadia Code", Consolas, monospace; font-size: .9rem;
-    resize: none; line-height: 1.5; white-space: pre; overflow-x: auto; overflow-y: auto;
-  }
-
-  .actions { display: flex; gap: 12px; margin-top: 12px; align-items: center; }
-  button {
-    border: none; border-radius: 8px; padding: 10px 18px; font-size: 1rem;
-    cursor: pointer; font-weight: 600; color: #0b1220;
-    transition: all 0.2s ease;
-  }
-  button:disabled { opacity: 0.4; cursor: not-allowed; filter: grayscale(1); }
-  .btn-run { background: var(--accent); }
-  .btn-stop { background: var(--err); color: white; }
-  .btn-connect { background: var(--ok); }
-  .btn-req { background: var(--warn); color: #000; }
-  .btn-sm { padding: 6px 12px; font-size: 0.85rem; border-radius: 6px; }
-  .btn-secondary { background: #334155; color: #f1f5f9; font-weight: 500; }
-  .btn-auth { background: var(--ok); color: #0b1220; }
-  .btn-revoke { background: var(--err); color: #fff; }
-  button:hover:not(:disabled) { filter: brightness(1.1); transform: translateY(-1px); }
-  
-  #log, #activeCodeBox {
-    background: #0b1220; border: 1px solid var(--border); border-radius: 8px;
-    padding: 12px; height: 380px; overflow-y: auto; font-family: Consolas, monospace;
-    font-size: .85rem; white-space: pre-wrap; line-height: 1.4;
-  }
-  #log .err { color: var(--err); }
-  .ref { margin-top: 16px; font-size: .85rem; color: var(--muted); line-height: 1.7; }
-  .ref code { color: #7dd3fc; }
-  .port-row { display: flex; gap: 8px; align-items: center; margin-bottom: 12px; }
-  select, input[type="number"] { background: #0b1220; color: var(--text); border: 1px solid var(--border); border-radius: 8px; padding: 8px; }
-
-  .script-toolbar {
-    display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px;
-    background: #0b1220; padding: 10px; border-radius: 8px; border: 1px solid var(--border);
-  }
-  .script-toolbar select { flex: 1; min-width: 180px; }
-
-  /* Tabela de conexões e badges */
-  .auth-banner {
-    padding: 10px 14px; border-radius: 8px; font-size: 0.9rem; font-weight: 500;
-    margin-bottom: 12px; display: flex; align-items: center; justify-content: space-between;
-  }
-  .auth-banner.ok { background: rgba(34, 197, 94, 0.15); border: 1px solid rgba(34, 197, 94, 0.4); color: #4ade80; }
-  .auth-banner.warn { background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.4); color: #fbbf24; }
-  .auth-banner.err { background: rgba(239, 68, 68, 0.15); border: 1px solid rgba(239, 68, 68, 0.4); color: #f87171; }
-
-  .user-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 0.9rem; }
-  .user-table th, .user-table td { padding: 10px 12px; text-align: left; border-bottom: 1px solid var(--border); }
-  .user-table th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; }
-  
-  .badge { display: inline-block; padding: 3px 8px; border-radius: 12px; font-size: 0.75rem; font-weight: 600; }
-  .badge-ok { background: rgba(34, 197, 94, 0.2); color: #4ade80; border: 1px solid rgba(34, 197, 94, 0.4); }
-  .badge-warn { background: rgba(245, 158, 11, 0.2); color: #fbbf24; border: 1px solid rgba(245, 158, 11, 0.4); }
-  .badge-err { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
-  .badge-tag { background: #334155; color: #cbd5e1; margin-left: 6px; }
-</style>
+<link rel="stylesheet" href="/static/style.css">
 </head>
 <body>
 
@@ -167,11 +13,11 @@
       <h1>Controle do Dobot Magician Lite</h1>
       <p class="sub">Interface com Controle Manual Jog (Ponto A ➔ B) e Painel de Autorização da Porta 5000</p>
     </div>
-    
+
     <!-- Navegação em 2 Abas -->
-    <div class="tabs-nav">
-      <button class="tab-btn active" id="tabBtn1" onclick="mudarAba('abaControle')">🎮 Controle & Editor</button>
-      <button class="tab-btn" id="tabBtn2" onclick="mudarAba('abaAdmin')">🛡️ Autorizações & Monitoramento</button>
+    <div class="tabs-nav" id="tabsNav">
+      <button class="tab-btn active" id="tabBtn1" onclick="mudarAba('abaControle')">🎮 Controle &amp; Editor</button>
+      <button class="tab-btn" id="tabBtn2" onclick="mudarAba('abaAdmin')">🛡️ Autorizações &amp; Monitoramento</button>
     </div>
   </div>
 
@@ -212,25 +58,24 @@
         <!-- Painel de Movimentação Manual Jog & Captura de Ponto A / Ponto B -->
         <div class="teach-panel">
           <div class="teach-title">
-            <span>🎮 Movimentação Manual (Jog) & Captura de Posição</span>
+            <span>🎮 Movimentação Manual (Jog) &amp; Captura de Posição</span>
             <button id="btnLerPosicao" class="btn-sm btn-secondary">🔄 Atualizar Posição</button>
           </div>
 
           <div style="font-size:0.8rem; color:var(--accent); background:rgba(56, 189, 248, 0.08); padding:8px 12px; border-radius:6px; margin-bottom:12px; border:1px solid rgba(56, 189, 248, 0.2);">
-            💡 <strong>Dica para Movimentar com a Mão:</strong> Além dos botões Jog abaixo, você pode **pressionar e segurar o botão físico de destrava no próprio braço do robô** (localizado na junta frontal) para guiá-lo livremente com a mão até a posição exata, e depois clicar em <em>"🔄 Atualizar Posição"</em> para gravar!
+            💡 <strong>Dica para Movimentar com a Mão:</strong> Além dos botões Jog abaixo, você pode pressionar e segurar o botão físico de destrava no próprio braço do robô (localizado na junta frontal) para guiá-lo livremente com a mão até a posição exata, e depois clicar em <em>"🔄 Atualizar Posição"</em> para gravar!
           </div>
 
-
-          <!-- Controle de Passo -->
+          <!-- Controle de Passo — event passado explicitamente -->
           <div class="step-selector">
             <span>Passo de Movimento:</span>
-            <button class="btn-step" onclick="setPasso(1)">1 mm</button>
-            <button class="btn-step" onclick="setPasso(5)">5 mm</button>
-            <button class="btn-step active" id="step10" onclick="setPasso(10)">10 mm</button>
-            <button class="btn-step" onclick="setPasso(50)">50 mm</button>
+            <button class="btn-step" onclick="setPasso(1, event)">1 mm</button>
+            <button class="btn-step" onclick="setPasso(5, event)">5 mm</button>
+            <button class="btn-step active" id="step10" onclick="setPasso(10, event)">10 mm</button>
+            <button class="btn-step" onclick="setPasso(50, event)">50 mm</button>
           </div>
 
-          <!-- Botoes Jog D-Pad -->
+          <!-- Botões Jog D-Pad -->
           <div class="jog-container">
             <div class="jog-group">
               <label>Eixo X (Frente/Trás)</label>
@@ -267,22 +112,21 @@
 
           <!-- Ações Rápidas de Atuador -->
           <div style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap;">
-            <button class="btn-sm btn-secondary" onclick="moverJog('home')">🏠 Home (170, 0, 70, 0)</button>
+            <button class="btn-sm btn-secondary" onclick="moverJog('home')">🏠 Home (200, 0, 100, 0)</button>
             <button class="btn-sm btn-secondary" onclick="limparAlarmesDoRobo()" style="background:#7c2d12; color:#ffedd5;" title="Limpar erros de limite de junta e destravar o robô">🧹 Limpar Alarmes / Destravar</button>
             <button class="btn-sm btn-secondary" onclick="testarAtuador('ventosa', true)">💨 Ventosa Ligar</button>
             <button class="btn-sm btn-secondary" onclick="testarAtuador('ventosa', false)">💨 Ventosa Desligar</button>
             <button class="btn-sm btn-secondary" onclick="testarAtuador('garra', true)">🗜️ Garra Fechar</button>
             <button class="btn-sm btn-secondary" onclick="testarAtuador('garra', false)">🗜️ Garra Abrir</button>
-
           </div>
-          
+
           <div class="point-boxes">
             <div class="point-box">
               <h4>PONTO A (Pegar Objeto)</h4>
               <div class="point-coords" id="coordsPontoA">X: —, Y: —, Z: —, R: —</div>
               <button id="btnCapturarA" class="btn-sm btn-secondary" style="width:100%;">📍 Capturar Ponto A</button>
             </div>
-            
+
             <div class="point-box">
               <h4>PONTO B (Soltar Objeto)</h4>
               <div class="point-coords" id="coordsPontoB">X: —, Y: —, Z: —, R: —</div>
@@ -301,6 +145,16 @@
             <input type="number" id="alturaSeguraZ" value="50" style="width:70px; padding:4px 8px; font-size:0.85rem;">
 
             <button id="btnGerarCodigoAB" class="btn-sm btn-run" style="margin-left:auto; color:#0b1220;">⚡ Gerar Código Ponto A ➔ B</button>
+          </div>
+
+          <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:10px; padding:10px; background:rgba(255,255,255,0.02); border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
+            <label style="font-size:0.85rem; color:var(--muted);">✏️ Escrever Texto:</label>
+            <input type="text" id="textoEscrever" placeholder="Digite o nome ou texto..." value="ROBOT" style="flex:1; padding:6px 10px; font-size:0.85rem; border-radius:6px; border:1px solid rgba(255,255,255,0.12); background:rgba(0,0,0,0.2); color:#e2e8f0;">
+            <input type="number" id="escreverX" value="180" title="X inicial" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverY" value="-40" title="Y inicial" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverZ" value="-10" title="Z de desenho" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverEsp" value="4" title="Espaçamento" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <button id="btnGerarEscrita" class="btn-sm btn-run" style="color:#0b1220;">✏️ Gerar Escrita</button>
           </div>
         </div>
 
@@ -326,17 +180,20 @@
         <!-- Editor de Código com Indexação de Linhas -->
         <div class="editor-wrapper">
           <div class="line-numbers" id="lineNumbers">1</div>
-          <textarea id="codigo" wrap="off" spellcheck="false"># Exemplo: pegar e soltar com a VENTOSA
+          <textarea id="codigo" wrap="off" spellcheck="false"># Exemplo: pegar e soltar com a GARRA
 velocidade 200 200
-mover 200 0 50 0
-ventosa on
-mover 200 0 0 0
+mover 200 0 60 0
+garra off
+mover 200 0 20 0
+garra on
 esperar 500
-mover 200 0 50 0
-mover 240 0 50 0
-mover 240 0 0 0
-ventosa off
-mover 240 0 50 0</textarea>
+mover 200 0 60 0
+mover 250 0 60 0
+mover 250 0 20 0
+garra off
+esperar 500
+mover 250 0 60 0
+home</textarea>
         </div>
 
         <div class="actions">
@@ -357,7 +214,6 @@ mover 240 0 50 0</textarea>
           <code>esperar ms</code> — pausa em milissegundos<br>
           <code>velocidade v [a]</code> — velocidade/aceleração<br>
           <code>home</code> — volta para (200, 0, 100, 0)<br>
-
           <code>posicao</code> — mostra a posição atual no log
         </div>
       </div>
@@ -365,7 +221,7 @@ mover 240 0 50 0</textarea>
   </div>
 
   <!-- ABA 2: AUTORIZAÇÕES & MONITORAMENTO -->
-  <div id="abaAdmin" class="tab-content">
+  <div id="abaAdmin" class="tab-content admin-only">
     <div class="grid">
       <!-- Painel de Pessoas Conectadas na Porta 5000 -->
       <div class="card">
@@ -376,6 +232,7 @@ mover 240 0 50 0</textarea>
         <table class="user-table">
           <thead>
             <tr>
+              <th>Nome</th>
               <th>Endereço IP</th>
               <th>Identificador</th>
               <th>Status de Autorização</th>
@@ -384,7 +241,7 @@ mover 240 0 50 0</textarea>
           </thead>
           <tbody id="tabelaClientes">
             <tr>
-              <td colspan="4" style="color:var(--muted); text-align:center;">Carregando conexões...</td>
+              <td colspan="5" style="color:var(--muted); text-align:center;">Carregando conexões...</td>
             </tr>
           </tbody>
         </table>
@@ -401,526 +258,6 @@ mover 240 0 50 0</textarea>
     </div>
   </div>
 
-<script>
-  const $ = (id) => document.getElementById(id);
-
-  // Navegação entre Abas
-  function mudarAba(abaId) {
-    document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
-    document.querySelectorAll('.tab-btn').forEach(el => el.classList.remove('active'));
-
-    $(abaId).classList.add('active');
-    if (abaId === 'abaControle') $('tabBtn1').classList.add('active');
-    if (abaId === 'abaAdmin') $('tabBtn2').classList.add('active');
-  }
-
-  let passoAtual = 10;
-  function setPasso(p) {
-    passoAtual = p;
-    document.querySelectorAll('.btn-step').forEach(btn => btn.classList.remove('active'));
-    event.target.classList.add('active');
-  }
-
-  async function moverJog(eixo) {
-    try {
-      const resp = await fetch('/jog', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: clientId, eixo: eixo, passo: passoAtual })
-      });
-      const dados = await resp.json();
-      if (dados.ok && dados.posicao) {
-        $('posicao').textContent = dados.posicao.join(', ');
-      } else if (!dados.ok) {
-        alert(dados.erro || 'Erro ao movimentar robô.');
-      }
-    } catch (e) {
-      alert('Erro de conexão ao enviar comando jog.');
-    }
-  }
-
-  async function testarAtuador(tipo, estado) {
-    try {
-      const resp = await fetch('/atuador', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: clientId, tipo: tipo, estado: estado })
-      });
-      const dados = await resp.json();
-      if (!dados.ok) alert(dados.erro || 'Erro ao acionar atuador.');
-    } catch (e) {
-      alert('Erro de conexão.');
-    }
-  }
-
-  async function limparAlarmesDoRobo() {
-    try {
-      const resp = await fetch('/limpar_alarmes', { method: 'POST' });
-      const dados = await resp.json();
-      if (dados.ok) {
-        alert('Alarmes limpos com sucesso! O robô foi destravado.');
-      } else {
-        alert(dados.erro || 'Erro ao limpar alarmes.');
-      }
-    } catch (e) {
-      alert('Erro de comunicação.');
-    }
-  }
-
-
-  const EXEMPLOS = {
-    ventosa: "# Exemplo: pegar e soltar com a VENTOSA\nvelocidade 200 200\nmover 200 0 50 0\nventosa on\nmover 200 0 0 0\nesperar 500\nmover 200 0 50 0\nmover 240 0 50 0\nmover 240 0 0 0\nventosa off\nmover 240 0 50 0",
-    garra: "# Exemplo: pegar e soltar com a GARRA\nvelocidade 200 200\nmover 200 0 60 0\ngarra off\nmover 200 0 20 0\ngarra on\nesperar 500\nmover 200 0 60 0\nmover 250 0 60 0\nmover 250 0 20 0\ngarra off\nmover 250 0 60 0",
-    desenhar: "# Exemplo: desenhar um quadrado com CANETA\nvelocidade 100 100\nmover 200 -40 30 0\nmover 200 -40 0 0\ndesenhar 240 -40\ndesenhar 240 40\ndesenhar 200 40\ndesenhar 200 -40\nmover 200 -40 30 0"
-  };
-
-  function getClientId() {
-    let id = localStorage.getItem('dobot_client_id');
-    if (!id) {
-      id = 'c_' + Math.random().toString(36).substring(2, 10) + Date.now().toString(36);
-      localStorage.setItem('dobot_client_id', id);
-    }
-    return id;
-  }
-  const clientId = getClientId();
-
-  // Variáveis para armazenamento dos pontos A e B capturados
-  let pontoA = null;
-  let pontoB = null;
-
-  // Função de atualização da numeração de linhas do editor
-  function atualizarNumeracaoLinhas() {
-    const textarea = $('codigo');
-    const lineNumbers = $('lineNumbers');
-    const totalLinhas = textarea.value.split('\n').length;
-    const numeros = Array.from({ length: totalLinhas }, (_, i) => i + 1).join('\n');
-    lineNumbers.textContent = numeros;
-  }
-
-  function normalizarECarregarCodigo(txt) {
-    if (txt === undefined || txt === null) return;
-    let str = txt.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
-    str = str.replace(/;\s*/g, '\n');
-    const linhas = str.split('\n').map(l => l.trimEnd());
-    $('codigo').value = linhas.join('\n');
-    atualizarNumeracaoLinhas();
-  }
-
-  // Leitura manual da posição atual
-  async function lerPosicaoManual() {
-    try {
-      const resp = await fetch('/posicao');
-      const dados = await resp.json();
-      if (dados.ok && dados.posicao) {
-        return dados.posicao;
-      } else {
-        alert(dados.erro || 'Não foi possível ler a posição. Verifique se o robô está conectado.');
-        return null;
-      }
-    } catch (e) {
-      alert('Erro de comunicação com o servidor.');
-      return null;
-    }
-  }
-
-  $('btnLerPosicao').addEventListener('click', async () => {
-    const pos = await lerPosicaoManual();
-    if (pos) {
-      $('posicao').textContent = pos.join(', ');
-    }
-  });
-
-  $('btnCapturarA').addEventListener('click', async () => {
-    const pos = await lerPosicaoManual();
-    if (pos) {
-      pontoA = pos;
-      $('coordsPontoA').textContent = `X: ${pos[0]}, Y: ${pos[1]}, Z: ${pos[2]}, R: ${pos[3]}`;
-    }
-  });
-
-  $('btnCapturarB').addEventListener('click', async () => {
-    const pos = await lerPosicaoManual();
-    if (pos) {
-      pontoB = pos;
-      $('coordsPontoB').textContent = `X: ${pos[0]}, Y: ${pos[1]}, Z: ${pos[2]}, R: ${pos[3]}`;
-    }
-  });
-
-  // Gerador de código Pick & Place de Ponto A ➔ Ponto B
-  $('btnGerarCodigoAB').addEventListener('click', () => {
-    if (!pontoA || !pontoB) {
-      alert('Por favor, capture o Ponto A e o Ponto B antes de gerar o código.');
-      return;
-    }
-    const atuador = $('selectAtuador').value;
-    const zSeguro = parseFloat($('alturaSeguraZ').value) || 50.0;
-
-    const cmdOn = atuador === 'ventosa' ? 'ventosa on' : 'garra on';
-    const cmdOff = atuador === 'ventosa' ? 'ventosa off' : 'garra off';
-    const cmdPrep = atuador === 'garra' ? 'garra off\n' : '';
-
-    const scriptGerado = `# Rotina Automática: Mover Objeto do Ponto A para o Ponto B
-velocidade 200 200
-${cmdPrep}# Mover para altura segura acima do Ponto A
-mover ${pontoA[0]} ${pontoA[1]} ${zSeguro} ${pontoA[3]}
-# Baixar para pegar no Ponto A
-mover ${pontoA[0]} ${pontoA[1]} ${pontoA[2]} ${pontoA[3]}
-${cmdOn}
-esperar 500
-# Elevar para altura segura
-mover ${pontoA[0]} ${pontoA[1]} ${zSeguro} ${pontoA[3]}
-# Mover para altura segura acima do Ponto B
-mover ${pontoB[0]} ${pontoB[1]} ${zSeguro} ${pontoB[3]}
-# Baixar para soltar no Ponto B
-mover ${pontoB[0]} ${pontoB[1]} ${pontoB[2]} ${pontoB[3]}
-${cmdOff}
-esperar 500
-# Retornar para altura segura
-mover ${pontoB[0]} ${pontoB[1]} ${zSeguro} ${pontoB[3]}
-home`;
-
-    normalizarECarregarCodigo(scriptGerado);
-    alert('Código de movimentação do Ponto A para o Ponto B gerado com sucesso!');
-  });
-
-  function carregarCodigosSalvosSelect() {
-    const optgroup = $('optgroupSalvos');
-    optgroup.innerHTML = '';
-    const salvos = JSON.parse(localStorage.getItem('dobot_user_scripts') || '{}');
-    const chaves = Object.keys(salvos);
-    if (chaves.length === 0) {
-      const opt = document.createElement('option');
-      opt.disabled = true;
-      opt.textContent = '(Nenhum código personalizado salvo)';
-      optgroup.appendChild(opt);
-    } else {
-      chaves.forEach(nome => {
-        const opt = document.createElement('option');
-        opt.value = 'custom:' + nome;
-        opt.textContent = '📜 ' + nome;
-        optgroup.appendChild(opt);
-      });
-    }
-  }
-
-  function puxarCodigoSelecionado() {
-    const val = $('savedScriptsSelect').value;
-    if (!val) return;
-    let texto = '';
-    if (val.startsWith('custom:')) {
-      const nome = val.replace('custom:', '');
-      const salvos = JSON.parse(localStorage.getItem('dobot_user_scripts') || '{}');
-      texto = salvos[nome] || '';
-    } else if (EXEMPLOS[val]) {
-      texto = EXEMPLOS[val];
-    }
-    normalizarECarregarCodigo(texto);
-  }
-
-  function salvarCodigoAtual() {
-    const codigo = $('codigo').value.trim();
-    if (!codigo) {
-      alert('O campo de código está vazio.');
-      return;
-    }
-    const nome = prompt('Digite um nome para identificar este código:');
-    if (!nome) return;
-    const salvos = JSON.parse(localStorage.getItem('dobot_user_scripts') || '{}');
-    salvos[nome] = codigo;
-    localStorage.setItem('dobot_user_scripts', JSON.stringify(salvos));
-    carregarCodigosSalvosSelect();
-    $('savedScriptsSelect').value = 'custom:' + nome;
-    alert(`Código "${nome}" salvo com sucesso!`);
-  }
-
-  function baixarCodigoArquivo() {
-    const codigo = $('codigo').value;
-    const blob = new Blob([codigo], { type: 'text/plain;charset=utf-8' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = 'codigo_dobot.txt';
-    link.click();
-    URL.revokeObjectURL(link.href);
-  }
-
-  function abrirArquivoLocal(e) {
-    const file = e.target.files[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = function(evt) {
-      normalizarECarregarCodigo(evt.target.result);
-    };
-    reader.readAsText(file);
-    e.target.value = '';
-  }
-
-  async function carregarPortas() {
-    try {
-      const resp = await fetch('/portas');
-      const dados = await resp.json();
-      const sel = $('portaSelect');
-      sel.innerHTML = '';
-      const auto = document.createElement('option');
-      auto.value = '';
-      auto.textContent = 'Automático (primeira porta)';
-      sel.appendChild(auto);
-      for (const p of dados.portas) {
-        const opt = document.createElement('option');
-        opt.value = p;
-        opt.textContent = p;
-        if (p === dados.atual) opt.selected = true;
-        sel.appendChild(opt);
-      }
-    } catch (e) {}
-  }
-
-  async function atualizarStatus() {
-    try {
-      const resp = await fetch('/status?client_id=' + encodeURIComponent(clientId));
-      const dados = await resp.json();
-
-      // Atualiza Status do Braço
-      const cx = $('conexao');
-      if (dados.conectado) {
-        cx.innerHTML = '<span class="dot on"></span>Conectado (' + (dados.porta || '?') + ')';
-      } else {
-        cx.innerHTML = '<span class="dot off"></span>Não conectado';
-      }
-
-      $('posicao').textContent = dados.posicao ? dados.posicao.join(', ') : '—';
-
-      const ex = $('execucao');
-      if (dados.executando) {
-        ex.innerHTML = '<span class="dot run"></span>Executando…';
-      } else {
-        ex.innerHTML = '<span class="dot off"></span>Parado';
-      }
-
-      // Atualiza Monitor da Aba 2 (Código em Execução Agora)
-      const codeBox = $('activeCodeBox');
-      const labelSol = $('labelSolicitante');
-      if (dados.executando && dados.job_atual) {
-        labelSol.textContent = `Executando via IP: ${dados.job_atual.ip || 'Local'}`;
-        codeBox.textContent = dados.job_atual.codigo || '// Sem código';
-      } else {
-        labelSol.textContent = 'Nenhuma execução ativa';
-        codeBox.textContent = '// Nenhuma execução em andamento no momento.';
-      }
-
-      // Atualiza Log
-      const log = $('log');
-      log.innerHTML = '';
-      for (const linha of dados.log) {
-        const div = document.createElement('div');
-        div.textContent = linha;
-        log.appendChild(div);
-      }
-      if (dados.erro) {
-        const div = document.createElement('div');
-        div.className = 'err';
-        div.textContent = 'ERRO: ' + dados.erro;
-        log.appendChild(div);
-      }
-      log.scrollTop = log.scrollHeight;
-
-      // Atualiza Status do Cliente Atual e Banner de Autorização
-      const seuStatus = dados.seu_status || {};
-      const btnExec = $('btnExecutar');
-      const banner = $('authBanner');
-      const statusText = $('authStatusText');
-      const btnSolicitar = $('btnSolicitarInline');
-
-      if (seuStatus.autorizado) {
-        btnExec.disabled = false;
-        banner.className = 'auth-banner ok';
-        statusText.textContent = '✅ Você está autorizado a executar comandos no robô.';
-        btnSolicitar.style.display = 'none';
-      } else if (seuStatus.solicitou) {
-        btnExec.disabled = true;
-        banner.className = 'auth-banner warn';
-        statusText.textContent = '⏳ Sua solicitação foi enviada. Aguardando aprovação do administrador do notebook...';
-        btnSolicitar.style.display = 'none';
-      } else {
-        btnExec.disabled = true;
-        banner.className = 'auth-banner err';
-        statusText.textContent = '⚠️ Devido ao número de conexões na porta 5000, você precisa de autorização para executar.';
-        btnSolicitar.style.display = 'inline-block';
-      }
-
-      // Atualiza Lista de Pessoas Conectadas
-      const clientes = dados.clientes || [];
-      $('totalConectados').textContent = clientes.length + (clientes.length === 1 ? ' pessoa' : ' pessoas');
-
-      const tbody = $('tabelaClientes');
-      tbody.innerHTML = '';
-
-      if (clientes.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="4" style="color:var(--muted); text-align:center;">Nenhuma conexão detectada.</td></tr>';
-      } else {
-        const souAdmin = seuStatus.is_admin;
-        clientes.forEach(c => {
-          const tr = document.createElement('tr');
-
-          // Coluna IP & Badges
-          const tdIp = document.createElement('td');
-          tdIp.textContent = c.ip;
-          if (c.is_you) {
-            const b = document.createElement('span');
-            b.className = 'badge badge-tag';
-            b.textContent = 'Você';
-            tdIp.appendChild(b);
-          }
-          if (c.is_admin) {
-            const b = document.createElement('span');
-            b.className = 'badge badge-tag';
-            b.style.background = '#0284c7';
-            b.textContent = 'Admin (Host)';
-            tdIp.appendChild(b);
-          }
-          tr.appendChild(tdIp);
-
-          // Coluna ID
-          const tdId = document.createElement('td');
-          tdId.style.fontFamily = 'monospace';
-          tdId.textContent = c.id.substring(0, 12) + '…';
-          tr.appendChild(tdId);
-
-          // Coluna Status
-          const tdStatus = document.createElement('td');
-          if (c.autorizado) {
-            tdStatus.innerHTML = '<span class="badge badge-ok">Autorizado</span>';
-          } else if (c.solicitou) {
-            tdStatus.innerHTML = '<span class="badge badge-warn">Aguardando Autorização</span>';
-          } else {
-            tdStatus.innerHTML = '<span class="badge badge-err">Não Autorizado</span>';
-          }
-          tr.appendChild(tdStatus);
-
-          // Coluna Ações
-          const tdAcoes = document.createElement('td');
-          if (souAdmin && !c.is_admin) {
-            if (c.autorizado) {
-              const btnRev = document.createElement('button');
-              btnRev.className = 'btn-revoke btn-sm';
-              btnRev.textContent = 'Revogar Acesso';
-              btnRev.onclick = () => alterarAutorizacao(c.id, false);
-              tdAcoes.appendChild(btnRev);
-            } else {
-              const btnAut = document.createElement('button');
-              btnAut.className = 'btn-auth btn-sm';
-              btnAut.textContent = 'Autorizar Execução';
-              btnAut.onclick = () => alterarAutorizacao(c.id, true);
-              tdAcoes.appendChild(btnAut);
-            }
-          } else if (c.is_admin) {
-            tdAcoes.textContent = 'Administrador do sistema';
-            tdAcoes.style.color = 'var(--muted)';
-          } else if (c.is_you && !c.autorizado) {
-            if (!c.solicitou) {
-              const btnSol = document.createElement('button');
-              btnSol.className = 'btn-req btn-sm';
-              btnSol.textContent = 'Solicitar Permissão';
-              btnSol.onclick = solicitarAutorizacao;
-              tdAcoes.appendChild(btnSol);
-            } else {
-              tdAcoes.textContent = 'Aguardando aprovação...';
-              tdAcoes.style.color = 'var(--warn)';
-            }
-          } else {
-            tdAcoes.textContent = '—';
-            tdAcoes.style.color = 'var(--muted)';
-          }
-          tr.appendChild(tdAcoes);
-
-          tbody.appendChild(tr);
-        });
-      }
-    } catch (e) {}
-  }
-
-  async function solicitarAutorizacao() {
-    try {
-      const resp = await fetch('/solicitar_autorizacao', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ client_id: clientId })
-      });
-      const dados = await resp.json();
-      if (!dados.ok) alert(dados.erro || 'Erro ao solicitar autorização.');
-      atualizarStatus();
-    } catch (e) {
-      alert('Erro de conexão ao solicitar autorização.');
-    }
-  }
-
-  async function alterarAutorizacao(targetId, autorizado) {
-    try {
-      const resp = await fetch('/autorizar', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          admin_id: clientId,
-          target_id: targetId,
-          autorizado: autorizado
-        })
-      });
-      const dados = await resp.json();
-      if (!dados.ok) alert(dados.erro || 'Erro ao alterar autorização.');
-      atualizarStatus();
-    } catch (e) {
-      alert('Erro de conexão ao alterar autorização.');
-    }
-  }
-
-  // Sincronização e digitação das linhas do editor
-  const textareaCodigo = $('codigo');
-  textareaCodigo.addEventListener('input', atualizarNumeracaoLinhas);
-  textareaCodigo.addEventListener('scroll', () => {
-    $('lineNumbers').scrollTop = textareaCodigo.scrollTop;
-  });
-
-  // Eventos da toolbar de código
-  $('btnPuxarCodigo').addEventListener('click', puxarCodigoSelecionado);
-  $('btnFormatarLinhas').addEventListener('click', () => normalizarECarregarCodigo(textareaCodigo.value));
-  $('btnSalvarCodigo').addEventListener('click', salvarCodigoAtual);
-  $('btnBaixarCodigo').addEventListener('click', baixarCodigoArquivo);
-  $('inputAbrirArquivo').addEventListener('change', abrirArquivoLocal);
-
-  $('btnSolicitarInline').addEventListener('click', solicitarAutorizacao);
-
-  $('btnExecutar').addEventListener('click', async () => {
-    const codigo = $('codigo').value;
-    const resp = await fetch('/executar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ codigo, client_id: clientId })
-    });
-    const dados = await resp.json();
-    if (!dados.ok) alert(dados.erro || 'Erro ao executar.');
-  });
-
-  $('btnParar').addEventListener('click', async () => {
-    await fetch('/parar', { method: 'POST' });
-  });
-
-  $('btnConectar').addEventListener('click', async () => {
-    const porta = $('portaSelect').value;
-    const resp = await fetch('/conectar', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ porta: porta || null })
-    });
-    const dados = await resp.json();
-    alert(dados.ok ? 'Conectado em ' + dados.porta : (dados.erro || 'Erro ao conectar.'));
-    carregarPortas();
-  });
-
-  // Inicialização
-  carregarPortas();
-  carregarCodigosSalvosSelect();
-  normalizarECarregarCodigo(textareaCodigo.value);
-  atualizarStatus();
-  setInterval(atualizarStatus, 1500);
-</script>
+<script src="/static/app.js"></script>
 </body>
 </html>
