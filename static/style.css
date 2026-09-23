@@ -152,5 +152,12 @@ select, input[type="number"] { background: #0b1220; color: var(--text); border: 
 .badge-err { background: rgba(239, 68, 68, 0.2); color: #f87171; border: 1px solid rgba(239, 68, 68, 0.4); }
 .badge-tag { background: #334155; color: #cbd5e1; margin-left: 6px; }
 
-.admin-only { display: none !important; }
-.user-blocked { opacity: 0.35; pointer-events: none; filter: grayscale(0.6); }
+.btn-manual {
+  background: #2563eb; color: #fff; border: 1px solid #3b82f6;
+  padding: 8px 14px; border-radius: 8px; font-size: 0.85rem;
+  text-decoration: none; display: inline-flex; align-items: center;
+  gap: 6px; transition: all 0.2s ease;
+}
+.btn-manual:hover { background: #1d4ed8; color: #fff; transform: translateY(-1px); }
+
+body:not(.is-admin) .admin-only { display: none !important; }

@@ -1,9 +1,10 @@
 import logging
+import socket
 import struct
 import threading
 import time
 
-from flask import Flask, jsonify, render_template, request
+from flask import Flask, jsonify, render_template, request, send_from_directory
 import serial.tools.list_ports
 from pydobot import Dobot
 from pydobot.enums import PTPMode
@@ -172,6 +173,17 @@ class RobotController:
         self._robot._set_ptp_cmd(x, y, z, r, mode=PTPMode.MOVJ_XYZ, wait=wait)
         self._ultima = (x, y, z, r)
 
+    def mover_linear(self, x, y, z, r=0.0, wait=True):
+        self._garantir_conexao()
+        self.limpar_alarmes()
+        try:
+            self._robot._set_queued_cmd_start_exec()
+        except Exception:
+            pass
+        # Movimento linear (MOVL_XYZ) para escrita/desenho - mantém a caneta no papel em linha reta
+        self._robot._set_ptp_cmd(x, y, z, r, mode=PTPMode.MOVL_XYZ, wait=wait)
+        self._ultima = (x, y, z, r)
+
     def garra(self, ativar):
         self._garantir_conexao()
         self._robot.grip(ativar)
@@ -224,546 +236,296 @@ def _parse_booleano(texto):
         return False
     raise ValueError(f"valor inválido: {texto!r} (use on/off, ligar/desligar, abrir/fechar ou 1/0)")
 
-FONTE_5X7 = {
-    " ": [
-        "     ",
-        "     ",
-        "     ",
-        "     ",
-        "     ",
-        "     ",
-        "     ",
-    ],
+# ---------------------------------------------------------------------------
+# Fonte vetorial: cada letra é uma lista de "traços".
+# Cada traço é uma lista de pontos (col, linha) normalizados em grade 0..8 x 0..12.
+# O braço desce ao PRIMEIRO ponto de cada traço e sobe ao ÚLTIMO.
+# Coordenadas: col cresce para a direita (+X), linha cresce para cima (+Y).
+# ---------------------------------------------------------------------------
+
+FONTE_VETORIAL = {
+    " ": [],  # espaço – sem traços
     "A": [
-        "  #  ",
-        " # # ",
-        "#   #",
-        "#####",
-        "#   #",
-        "#   #",
-        "#   #",
+        [(4, 12), (0, 0)],                  # perna esquerda (descendo)
+        [(4, 12), (8, 0)],                  # perna direita (descendo)
+        [(2, 6), (6, 6)],                   # barra central
     ],
     "B": [
-        "#### ",
-        "#   #",
-        "#   #",
-        "#### ",
-        "#   #",
-        "#   #",
-        "#### ",
+        [(0, 0), (0, 12), (6, 12), (8, 10), (8, 7.5), (6, 6), (0, 6)],
+        [(6, 6), (8, 4.5), (8, 2), (6, 0), (0, 0)],
     ],
     "C": [
-        " ####",
-        "#    ",
-        "#    ",
-        "#    ",
-        "#    ",
-        "#    ",
-        " ####",
+        [(8, 10), (6, 12), (2, 12), (0, 10), (0, 2), (2, 0), (6, 0), (8, 2)],
     ],
     "D": [
-        "#### ",
-        "#   #",
-        "#   #",
-        "#   #",
-        "#   #",
-        "#   #",
-        "#### ",
+        [(0, 0), (0, 12), (5, 12), (8, 9), (8, 3), (5, 0), (0, 0)],
     ],
     "E": [
-        "#####",
-        "#    ",
-        "#    ",
-        "#### ",
-        "#    ",
-        "#    ",
-        "#####",
+        [(8, 12), (0, 12), (0, 0), (8, 0)],
+        [(0, 6), (6, 6)],
     ],
     "F": [
-        "#####",
-        "#    ",
-        "#    ",
-        "#### ",
-        "#    ",
-        "#    ",
-        "#    ",
+        [(0, 0), (0, 12), (8, 12)],
+        [(0, 6), (6, 6)],
     ],
     "G": [
-        " ####",
-        "#    ",
-        "#    ",
-        "#  ##",
-        "#   #",
-        "#   #",
-        " ### ",
+        [(8, 10), (6, 12), (2, 12), (0, 10), (0, 2), (2, 0), (8, 0), (8, 6), (4, 6)],
     ],
     "H": [
-        "#   #",
-        "#   #",
-        "#   #",
-        "#####",
-        "#   #",
-        "#   #",
-        "#   #",
+        [(0, 0), (0, 12)],
+        [(8, 0), (8, 12)],
+        [(0, 6), (8, 6)],
     ],
     "I": [
-        "#####",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "#####",
+        [(2, 12), (6, 12)],
+        [(4, 12), (4, 0)],
+        [(2, 0), (6, 0)],
     ],
     "J": [
-        "    #",
-        "    #",
-        "    #",
-        "    #",
-        "#   #",
-        "#   #",
-        " ### ",
+        [(1, 12), (7, 12)],
+        [(5, 12), (5, 2), (3, 0), (1, 1)],
     ],
     "K": [
-        "#   #",
-        "#  # ",
-        "# #  ",
-        "##   ",
-        "# #  ",
-        "#  # ",
-        "#   #",
+        [(0, 0), (0, 12)],
+        [(0, 6), (8, 12)],
+        [(0, 6), (8, 0)],
     ],
     "L": [
-        "#    ",
-        "#    ",
-        "#    ",
-        "#    ",
-        "#    ",
-        "#    ",
-        "#####",
+        [(0, 12), (0, 0), (8, 0)],
     ],
     "M": [
-        "#   #",
-        "## ##",
-        "# # #",
-        "#   #",
-        "#   #",
-        "#   #",
-        "#   #",
+        [(0, 0), (0, 12), (4, 6), (8, 12), (8, 0)],
     ],
     "N": [
-        "#   #",
-        "##  #",
-        "# # #",
-        "#  ##",
-        "#   #",
-        "#   #",
-        "#   #",
+        [(0, 0), (0, 12), (8, 0), (8, 12)],
     ],
     "O": [
-        " ### ",
-        "#   #",
-        "#   #",
-        "#   #",
-        "#   #",
-        "#   #",
-        " ### ",
+        [(0, 2), (2, 0), (6, 0), (8, 2), (8, 10), (6, 12), (2, 12), (0, 10), (0, 2)],
     ],
     "P": [
-        "#### ",
-        "#   #",
-        "#   #",
-        "#### ",
-        "#    ",
-        "#    ",
-        "#    ",
+        [(0, 0), (0, 12), (6, 12), (8, 10), (8, 7), (6, 5), (0, 5)],
     ],
     "Q": [
-        " ### ",
-        "#   #",
-        "#   #",
-        "#   #",
-        "# # #",
-        "#  # ",
-        " ## #",
+        [(0, 2), (2, 0), (6, 0), (8, 2), (8, 10), (6, 12), (2, 12), (0, 10), (0, 2)],
+        [(5, 3), (8, 0)],
     ],
     "R": [
-        "#### ",
-        "#   #",
-        "#   #",
-        "#### ",
-        "# #  ",
-        "#  # ",
-        "#   #",
+        [(0, 0), (0, 12), (6, 12), (8, 10), (8, 7), (6, 5), (0, 5)],
+        [(4, 5), (8, 0)],
     ],
     "S": [
-        " ####",
-        "#    ",
-        "#    ",
-        " ### ",
-        "    #",
-        "    #",
-        "#### ",
+        [(8, 12), (2, 12), (0, 10), (0, 8), (2, 6), (6, 6), (8, 4), (8, 2), (6, 0), (0, 0)],
     ],
     "T": [
-        "#####",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
+        [(0, 12), (8, 12)],
+        [(4, 12), (4, 0)],
     ],
     "U": [
-        "#   #",
-        "#   #",
-        "#   #",
-        "#   #",
-        "#   #",
-        "#   #",
-        " ### ",
+        [(0, 12), (0, 2), (2, 0), (6, 0), (8, 2), (8, 12)],
     ],
     "V": [
-        "#   #",
-        "#   #",
-        "#   #",
-        "#   #",
-        " # # ",
-        " # # ",
-        "  #  ",
+        [(0, 12), (4, 0), (8, 12)],
     ],
     "W": [
-        "#   #",
-        "#   #",
-        "#   #",
-        "# # #",
-        "# # #",
-        " # # ",
-        " # # ",
+        [(0, 12), (2, 0), (4, 6), (6, 0), (8, 12)],
     ],
     "X": [
-        "#   #",
-        "#   #",
-        " # # ",
-        "  #  ",
-        " # # ",
-        "#   #",
-        "#   #",
+        [(0, 12), (8, 0)],
+        [(8, 12), (0, 0)],
     ],
     "Y": [
-        "#   #",
-        "#   #",
-        " # # ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
+        [(0, 12), (4, 6)],
+        [(8, 12), (4, 6), (4, 0)],
     ],
     "Z": [
-        "#####",
-        "    #",
-        "   # ",
-        "  #  ",
-        " #   ",
-        "#    ",
-        "#####",
+        [(0, 12), (8, 12), (0, 0), (8, 0)],
     ],
     "0": [
-        " ### ",
-        "#   #",
-        "#  ##",
-        "# # #",
-        "##  #",
-        "#   #",
-        " ### ",
+        [(0, 2), (2, 0), (6, 0), (8, 2), (8, 10), (6, 12), (2, 12), (0, 10), (0, 2)],
+        [(2, 2), (6, 10)],  # barra diagonal interna
     ],
     "1": [
-        "  #  ",
-        " ##  ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        " ### ",
+        [(2, 10), (4, 12), (4, 0)],
+        [(2, 0), (6, 0)],
     ],
     "2": [
-        " ### ",
-        "#   #",
-        "    #",
-        "  ## ",
-        " #   ",
-        "#    ",
-        "#####",
+        [(0, 10), (2, 12), (6, 12), (8, 10), (8, 7), (0, 0), (8, 0)],
     ],
     "3": [
-        " ### ",
-        "#   #",
-        "    #",
-        "  ## ",
-        "    #",
-        "#   #",
-        " ### ",
+        [(0, 10), (2, 12), (6, 12), (8, 10), (8, 7), (4, 6)],
+        [(4, 6), (8, 5), (8, 2), (6, 0), (2, 0), (0, 2)],
     ],
     "4": [
-        "#   #",
-        "#   #",
-        "#   #",
-        "#####",
-        "    #",
-        "    #",
-        "    #",
+        [(6, 0), (6, 12), (0, 5), (8, 5)],
     ],
     "5": [
-        "#####",
-        "#    ",
-        "#    ",
-        "#### ",
-        "    #",
-        "    #",
-        "#### ",
+        [(8, 12), (0, 12), (0, 7), (6, 7), (8, 5), (8, 2), (6, 0), (0, 0)],
     ],
     "6": [
-        " ### ",
-        "#    ",
-        "#    ",
-        "#### ",
-        "#   #",
-        "#   #",
-        " ### ",
+        [(8, 10), (6, 12), (2, 12), (0, 10), (0, 2), (2, 0), (6, 0), (8, 2), (8, 6), (0, 6)],
     ],
     "7": [
-        "#####",
-        "    #",
-        "   # ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
+        [(0, 12), (8, 12), (2, 0)],
     ],
     "8": [
-        " ### ",
-        "#   #",
-        "#   #",
-        " ### ",
-        "#   #",
-        "#   #",
-        " ### ",
+        [(4, 6), (2, 12), (6, 12), (8, 10), (8, 8), (4, 6), (0, 4), (0, 2), (2, 0), (6, 0), (8, 2), (8, 4), (4, 6)],
     ],
     "9": [
-        " ### ",
-        "#   #",
-        "#   #",
-        " ####",
-        "    #",
-        "    #",
-        " ### ",
+        [(8, 2), (6, 0), (2, 0), (0, 2), (0, 6), (8, 6), (8, 10), (6, 12), (2, 12), (0, 10)],
     ],
     ".": [
-        "     ",
-        "     ",
-        "     ",
-        "     ",
-        "     ",
-        "  #  ",
-        "  #  ",
+        [(3, 0), (5, 0)],
+        [(3, 1), (5, 1)],
     ],
     ",": [
-        "     ",
-        "     ",
-        "     ",
-        "     ",
-        "  #  ",
-        "  #  ",
-        " #   ",
+        [(3, 1), (5, 1), (3, -1)],
     ],
     "!": [
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "  #  ",
-        "     ",
-        "  #  ",
+        [(4, 4), (4, 12)],
+        [(4, 0), (4, 2)],
     ],
     "?": [
-        " ### ",
-        "#   #",
-        "    #",
-        "  ## ",
-        "  #  ",
-        "     ",
-        "  #  ",
+        [(0, 9), (2, 12), (6, 12), (8, 9), (8, 7), (4, 5), (4, 3)],
+        [(4, 0), (4, 1)],
     ],
     "-": [
-        "     ",
-        "     ",
-        "#####",
-        "     ",
-        "#####",
-        "     ",
-        "     ",
+        [(1, 6), (7, 6)],
     ],
     "_": [
-        "     ",
-        "     ",
-        "     ",
-        "     ",
-        "     ",
-        "     ",
-        "#####",
+        [(0, 0), (8, 0)],
     ],
     "+": [
-        "     ",
-        "  #  ",
-        "  #  ",
-        "#####",
-        "  #  ",
-        "  #  ",
-        "     ",
+        [(0, 6), (8, 6)],
+        [(4, 2), (4, 10)],
     ],
     "/": [
-        "    #",
-        "    #",
-        "   # ",
-        "  #  ",
-        " #   ",
-        "#    ",
-        "#    ",
-    ],
-    "(": [
-        "  #  ",
-        " #   ",
-        "#    ",
-        "#    ",
-        "#    ",
-        " #   ",
-        "  #  ",
-    ],
-    ")": [
-        "  #  ",
-        "   # ",
-        "    #",
-        "    #",
-        "    #",
-        "   # ",
-        "  #  ",
+        [(8, 0), (0, 12)],
     ],
     ":": [
-        "     ",
-        "  #  ",
-        "  #  ",
-        "     ",
-        "  #  ",
-        "  #  ",
-        "     ",
+        [(4, 8), (4, 9)],
+        [(4, 3), (4, 4)],
     ],
     ";": [
-        "     ",
-        "  #  ",
-        "  #  ",
-        "     ",
-        "  #  ",
-        "  #  ",
-        " #   ",
+        [(4, 8), (4, 9)],
+        [(4, 3), (4, 2), (3, 0)],
     ],
-    "*": [
-        "     ",
-        "# # #",
-        " ### ",
-        "#####",
-        " ### ",
-        "# # #",
-        "     ",
+    "(": [
+        [(6, 12), (2, 8), (2, 4), (6, 0)],
     ],
-    "=": [
-        "     ",
-        "#####",
-        "     ",
-        "#####",
-        "     ",
-        "#####",
-        "     ",
+    ")": [
+        [(2, 12), (6, 8), (6, 4), (2, 0)],
     ],
     "@": [
-        " ### ",
-        "#   #",
-        "# ###",
-        "# # #",
-        "# ###",
-        "#    ",
-        " ### ",
+        [(8, 5), (5, 5), (5, 8), (7, 8), (8, 7), (8, 2), (6, 0), (2, 0), (0, 2), (0, 10), (2, 12), (6, 12), (8, 10)],
     ],
     "#": [
-        " # # ",
-        " # # ",
-        "#####",
-        " # # ",
-        "#####",
-        " # # ",
-        " # # ",
+        [(2, 0), (2, 12)],
+        [(6, 0), (6, 12)],
+        [(0, 4), (8, 4)],
+        [(0, 8), (8, 8)],
     ],
-    "$": [
-        "  #  ",
-        " ####",
-        "#    ",
-        " ### ",
-        "    #",
-        "#### ",
-        "  #  ",
+    "*": [
+        [(4, 4), (4, 10)],
+        [(1, 5), (7, 9)],
+        [(7, 5), (1, 9)],
     ],
-    "%": [
-        "#    ",
-        "    #",
-        "   # ",
-        "  #  ",
-        " #   ",
-        "#    ",
-        "    #",
+    "=": [
+        [(0, 4), (8, 4)],
+        [(0, 8), (8, 8)],
     ],
     "&": [
-        " ### ",
-        "#   #",
-        "#    ",
-        " ##  ",
-        "#  # ",
-        "#  # ",
-        " ## #",
+        [(7, 2), (0, 7), (2, 10), (6, 10), (8, 7), (0, 0), (8, 0)],
+    ],
+    "$": [
+        [(4, 13), (4, -1)],
+        [(7, 10), (5, 12), (1, 12), (0, 10), (0, 8), (8, 4), (8, 2), (7, 0), (3, 0), (1, 2)],
+    ],
+    "%": [
+        [(0, 12), (8, 0)],
+        [(1, 11), (3, 11), (3, 9), (1, 9), (1, 11)],
+        [(5, 3), (7, 3), (7, 1), (5, 1), (5, 3)],
     ],
 }
 
-CARACTERES_SUPORTADOS = "".join(sorted(FONTE_5X7.keys()))
+CARACTERES_SUPORTADOS = "".join(sorted(FONTE_VETORIAL.keys()))
 
 
-def _escrever_texto_em_comandos(texto, x_inicio, y_inicio, z_desenho, espacamento=4.0, altura_ponto=1.0, z_inicio=None, r=0.0):
+def _escrever_texto_em_comandos(texto, x_inicio, y_inicio, z_desenho, espacamento=1.5, altura_ponto=1.0, z_inicio=30.0, r=0.0):
+    """
+    Gera comandos de movimento para escrever 'texto' usando a fonte vetorial.
+
+    Para cada traço de cada letra:
+      1. Levanta a caneta (Z seguro) e move para o 1º ponto do traço
+      2. Desce a caneta (Z papel) no 1º ponto
+      3. Move linearmente (com caneta no papel) para cada ponto seguinte do traço
+      4. Levanta a caneta ao final do traço
+
+    Assim o braço NUNCA arrasta a caneta entre pontos não relacionados.
+
+    Parâmetros
+    ----------
+    texto      : string a escrever
+    x_inicio   : posição X inicial no robô (mm)
+    y_inicio   : posição Y inicial no robô (mm) — base inferior das letras
+    z_desenho  : Z quando a caneta toca o papel
+    espacamento: escala (mm por unidade de grade). Grade: 12 u de altura, 8 u de largura.
+    z_inicio   : Z seguro para deslocamentos sem desenho
+    r          : rotação (graus)
+    """
     comandos = []
-    x = x_inicio
+    x_cursor = x_inicio
     z_aprox = z_inicio if z_inicio is not None else z_desenho + 15.0
+
+    # Estabiliza o robô na posição inicial antes de começar a escrever
+    comandos.append(f"# Mover para area de escrita e estabilizar")
+    comandos.append(f"mover {x_inicio:.2f} {y_inicio:.2f} {z_aprox:.2f} {r:.2f}")
+    comandos.append(f"esperar 500")
+
     for caractere in str(texto):
         ch = caractere.upper()
-        padrao = FONTE_5X7.get(ch)
-        if not padrao:
-            comandos.append(f"desenhar {x:.1f} {y_inicio:.1f} {z_desenho:.1f} {r:.1f}")
-            x += espacamento * 0.6
+        tracos = FONTE_VETORIAL.get(ch)
+
+        if tracos is None:
+            # Caractere não suportado: avança como espaço
+            x_cursor += espacamento * 6
             continue
 
-        linhas_ativas = []
-        for linha_idx, linha in enumerate(padrao):
-            pontos_na_linha = []
-            for col_idx, pixel in enumerate(linha):
-                if pixel == "#":
-                    pontos_na_linha.append((x + col_idx * espacamento, y_inicio - linha_idx * espacamento))
-            if pontos_na_linha:
-                linhas_ativas.append(pontos_na_linha)
+        if not tracos:
+            # Espaço: avança apenas
+            x_cursor += espacamento * 5
+            continue
 
-        if linhas_ativas:
-            comandos.append(f"mover {linhas_ativas[0][0][0]:.1f} {linhas_ativas[0][0][1]:.1f} {z_aprox:.1f} {r:.1f}")
-            for pontos in linhas_ativas:
-                for px, py in pontos:
-                    comandos.append(f"desenhar {px:.1f} {py:.1f} {z_desenho:.1f} {r:.1f}")
-            comandos.append(f"mover {linhas_ativas[-1][-1][0]:.1f} {linhas_ativas[-1][-1][1]:.1f} {z_aprox:.1f} {r:.1f}")
+        for traco in tracos:
+            if len(traco) < 1:
+                continue
 
-        x += espacamento * 5 + espacamento * 0.8
+            # 1. Levanta caneta e posiciona no 1º ponto do traço
+            p0 = traco[0]
+            px0 = x_cursor + p0[0] * espacamento
+            py0 = y_inicio + p0[1] * espacamento
+            comandos.append(f"mover {px0:.2f} {py0:.2f} {z_aprox:.2f} {r:.2f}")
+
+            # 2. Desce a caneta no 1º ponto
+            comandos.append(f"desenhar {px0:.2f} {py0:.2f} {z_desenho:.2f} {r:.2f}")
+            comandos.append(f"esperar 200")
+
+            # 3. Traça todos os pontos seguintes sem levantar
+            for p in traco[1:]:
+                px = x_cursor + p[0] * espacamento
+                py = y_inicio + p[1] * espacamento
+                comandos.append(f"desenhar {px:.2f} {py:.2f} {z_desenho:.2f} {r:.2f}")
+
+            # 4. Levanta caneta no último ponto
+            p_last = traco[-1]
+            px_last = x_cursor + p_last[0] * espacamento
+            py_last = y_inicio + p_last[1] * espacamento
+            comandos.append(f"mover {px_last:.2f} {py_last:.2f} {z_aprox:.2f} {r:.2f}")
+
+        # Avança o cursor para a próxima letra (largura 8 unidades + 2 de espaço entre letras)
+        x_cursor += espacamento * 10
+
     return comandos
+
 
 
 def _aplicar_comando(comando, args):
@@ -781,17 +543,17 @@ def _aplicar_comando(comando, args):
         x, y = float(args[0]), float(args[1])
         z = float(args[2]) if len(args) >= 3 else robot.ultima_posicao[2]
         r = float(args[3]) if len(args) >= 4 else 0.0
-        robot.mover(x, y, z, r)
+        robot.mover_linear(x, y, z, r)
         _log(f"  -> desenhar até x={x} y={y} z={z} r={r}")
 
     elif comando == "escrever":
         if not args:
             raise ValueError("uso: escrever <texto> [x] [y] [z] [espaçamento] [z_inicio] [r]")
         texto = " ".join(args[:1]) if len(args) >= 1 else ""
-        x = float(args[1]) if len(args) >= 2 else 231.4
-        y = float(args[2]) if len(args) >= 3 else -48.3
+        x = float(args[1]) if len(args) >= 2 else 160.0
+        y = float(args[2]) if len(args) >= 3 else -40.0
         z = float(args[3]) if len(args) >= 4 else -43.5
-        esp = float(args[4]) if len(args) >= 5 else 4.0
+        esp = float(args[4]) if len(args) >= 5 else 1.5
         z_inicio = float(args[5]) if len(args) >= 6 else None
         r = float(args[6]) if len(args) >= 7 else 0.0
 
@@ -879,11 +641,24 @@ def _executar_script(codigo):
 # Funções de auxílio para conexões de clientes
 # ---------------------------------------------------------------------------
 
+def _is_admin_ip(ip):
+    if not ip:
+        return False
+    if ip in ("127.0.0.1", "::1", "localhost"):
+        return True
+    try:
+        if ip == socket.gethostbyname(socket.gethostname()):
+            return True
+    except Exception:
+        pass
+    return False
+
+
 def _registrar_ou_atualizar_cliente(client_id, ip, nome=None):
     if not client_id:
         return None
     agora = time.time()
-    is_admin = ip in ("127.0.0.1", "::1", "localhost")
+    is_admin = _is_admin_ip(ip)
     with clientes_lock:
         # Remover inativos (sem heartbeat por mais de CLIENTE_TIMEOUT_S segundos)
         inativos = [
@@ -923,6 +698,28 @@ def _registrar_ou_atualizar_cliente(client_id, ip, nome=None):
 @app.route("/")
 def index():
     return render_template("index.html")
+
+
+@app.route("/manual")
+def manual():
+    return send_from_directory(".", "MANUAL_USUARIO.pdf", as_attachment=True)
+
+
+def _get_local_ip():
+    """Obtém o IP local da máquina na rede."""
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.connect(("8.8.8.8", 80))
+        ip = s.getsockname()[0]
+        s.close()
+        return ip
+    except Exception:
+        return "127.0.0.1"
+
+
+@app.route("/server_ip")
+def server_ip():
+    return jsonify({"ip": _get_local_ip()})
 
 
 @app.route("/status")
@@ -1008,7 +805,7 @@ def jog():
     dados = request.get_json(silent=True) or {}
     client_id = dados.get("client_id")
     ip = request.remote_addr
-    is_admin = ip in ("127.0.0.1", "::1", "localhost")
+    is_admin = _is_admin_ip(ip)
 
     with clientes_lock:
         cliente = clientes_conectados.get(client_id)
@@ -1055,6 +852,19 @@ def jog():
 def limpar_alarmes():
     if not robot.conectado:
         return jsonify({"ok": False, "erro": "Dobot não conectado."}), 400
+
+    dados = request.get_json(silent=True) or {}
+    client_id = dados.get("client_id")
+    ip = request.remote_addr
+    is_admin = _is_admin_ip(ip)
+
+    with clientes_lock:
+        cliente = clientes_conectados.get(client_id)
+        autorizado = (cliente and cliente.get("autorizado")) or is_admin
+
+    if not autorizado:
+        return jsonify({"ok": False, "erro": "Ação não autorizada pelo administrador."}), 403
+
     try:
         robot.limpar_alarmes()
         _log("  -> Alarmes do robô limpos e motores destravados.")
@@ -1072,7 +882,7 @@ def atuador():
     dados = request.get_json(silent=True) or {}
     client_id = dados.get("client_id")
     ip = request.remote_addr
-    is_admin = ip in ("127.0.0.1", "::1", "localhost")
+    is_admin = _is_admin_ip(ip)
 
     with clientes_lock:
         cliente = clientes_conectados.get(client_id)
@@ -1123,7 +933,7 @@ def autorizar():
     autorizar_flag = bool(dados.get("autorizado", True))
     ip = request.remote_addr
 
-    is_admin = ip in ("127.0.0.1", "::1", "localhost")
+    is_admin = _is_admin_ip(ip)
     with clientes_lock:
         if admin_id in clientes_conectados and clientes_conectados[admin_id].get("is_admin"):
             is_admin = True
@@ -1148,6 +958,17 @@ def portas():
 @app.route("/conectar", methods=["POST"])
 def conectar():
     dados = request.get_json(silent=True) or {}
+    client_id = dados.get("client_id")
+    ip = request.remote_addr
+    is_admin = _is_admin_ip(ip)
+
+    with clientes_lock:
+        if client_id in clientes_conectados and clientes_conectados[client_id].get("is_admin"):
+            is_admin = True
+
+    if not is_admin:
+        return jsonify({"ok": False, "erro": "Apenas o administrador do notebook pode conectar ou trocar a porta serial."}), 403
+
     porta = dados.get("porta") or None
     try:
         escolhida = robot.conectar(porta)
@@ -1160,12 +981,12 @@ def conectar():
 def escrever():
     dados = request.get_json(silent=True) or {}
     texto = (dados.get("texto") or "").strip()
-    x = float(dados.get("x", 231.4))
-    y = float(dados.get("y", -48.3))
-    z = float(dados.get("z", -43.5))
-    esp = float(dados.get("espacamento", 4.0))
+    x = float(dados.get("x", 160.0))
+    y = float(dados.get("y", -40.0))
+    z = float(dados.get("z", 0.0))
+    esp = float(dados.get("espacamento", 1.5))
     z_inicio = dados.get("z_inicio")
-    z_inicio = float(z_inicio) if z_inicio is not None else None
+    z_inicio = float(z_inicio) if z_inicio is not None else 30.0
     r = float(dados.get("r", 0.0))
 
     if not texto:
@@ -1184,7 +1005,7 @@ def executar():
     dados = request.get_json(silent=True) or {}
     client_id = dados.get("client_id")
     ip = request.remote_addr
-    is_admin = ip in ("127.0.0.1", "::1", "localhost")
+    is_admin = _is_admin_ip(ip)
 
     with clientes_lock:
         cliente = clientes_conectados.get(client_id)

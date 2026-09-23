@@ -70,7 +70,11 @@ async function testarAtuador(tipo, estado) {
 // ---------------------------------------------------------------------------
 async function limparAlarmesDoRobo() {
   try {
-    const resp = await fetch('/limpar_alarmes', { method: 'POST' });
+    const resp = await fetch('/limpar_alarmes', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ client_id: clientId })
+    });
     const dados = await resp.json();
     if (dados.ok) {
       alert('Alarmes limpos com sucesso! O robô foi destravado.');
@@ -219,13 +223,13 @@ $('btnGerarEscrita').addEventListener('click', async () => {
     alert('Digite um texto para escrever.');
     return;
   }
-  const x = parseFloat($('escreverX').value) || 231.4;
-  const y = parseFloat($('escreverY').value) || -48.3;
+  const x = parseFloat($('escreverX').value) || 160.0;
+  const y = parseFloat($('escreverY').value) || -40.0;
   const z = parseFloat($('escreverZ').value) || -43.5;
   const zInicioRaw = $('escreverZInicio').value;
   const zInicio = zInicioRaw === '' || zInicioRaw === null || zInicioRaw === undefined ? undefined : parseFloat(zInicioRaw);
   const r = parseFloat($('escreverR').value) || 0.0;
-  const esp = parseFloat($('escreverEsp').value) || 4.0;
+  const esp = parseFloat($('escreverEsp').value) || 1.5;
 
   const payload = { texto, x, y, z, espacamento: esp, r };
   if (Number.isFinite(zInicio)) payload.z_inicio = zInicio;
@@ -348,49 +352,17 @@ async function carregarPortas() {
 // ---------------------------------------------------------------------------
 // Permissões admin / usuário
 // ---------------------------------------------------------------------------
-const ELEMENTOS_CONTROLE = [
-  'portaSelect','btnConectar','btnLerPosicao',
-  'btnCapturarA','btnCapturarB','btnGerarCodigoAB',
-  'btnGerarEscrita','textoEscrever','escreverX','escreverY','escreverZ','escreverZInicio','escreverR','escreverEsp',
-  'btnExecutar','codigo','savedScriptsSelect','btnPuxarCodigo','btnFormatarLinhas',
-  'btnSalvarCodigo','btnBaixarCodigo','inputAbrirArquivo'
-];
-
-function aplicarPermissoesAdmin(isAdmin, autorizado) {
-  const adminElements = document.querySelectorAll('.admin-only');
-  adminElements.forEach(el => {
-    el.classList.toggle('admin-only', !isAdmin);
-  });
+function aplicarPermissoesAdmin(isAdmin) {
+  document.body.classList.toggle('is-admin', !!isAdmin);
 
   const tabBtn2 = $('tabBtn2');
-  const abaAdmin = $('abaAdmin');
 
   if (!isAdmin) {
     if (tabBtn2) tabBtn2.style.display = 'none';
-    if (abaAdmin) abaAdmin.classList.add('admin-only');
     mudarAba('abaControle');
   } else {
     if (tabBtn2) tabBtn2.style.display = '';
-    if (abaAdmin) abaAdmin.classList.remove('admin-only');
   }
-
-  ELEMENTOS_CONTROLE.forEach(id => {
-    const el = $(id);
-    if (!el) return;
-    if (isAdmin || autorizado) {
-      el.classList.remove('user-blocked');
-      el.removeAttribute('disabled');
-      el.removeAttribute('readonly');
-    } else {
-      el.classList.add('user-blocked');
-      if (el.tagName === 'BUTTON' || el.tagName === 'SELECT' || el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') {
-        el.setAttribute('disabled', 'disabled');
-      }
-      if (el.tagName === 'TEXTAREA' || el.tagName === 'INPUT') {
-        el.setAttribute('readonly', 'readonly');
-      }
-    }
-  });
 }
 
 // ---------------------------------------------------------------------------
@@ -401,7 +373,7 @@ async function atualizarStatus() {
     const resp = await fetch('/status?client_id=' + encodeURIComponent(clientId));
     const dados = await resp.json();
 
-    aplicarPermissoesAdmin(!!(dados.seu_status && dados.seu_status.is_admin), !!(dados.seu_status && dados.seu_status.autorizado));
+    aplicarPermissoesAdmin(!!(dados.seu_status && dados.seu_status.is_admin));
 
     // Atualiza Status do Braço
     const cx = $('conexao');
@@ -663,12 +635,32 @@ $('btnConectar').addEventListener('click', async () => {
   const resp = await fetch('/conectar', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ porta: porta || null })
+    body: JSON.stringify({ client_id: clientId, porta: porta || null })
   });
   const dados = await resp.json();
   alert(dados.ok ? 'Conectado em ' + dados.porta : (dados.erro || 'Erro ao conectar.'));
   carregarPortas();
 });
+
+// ---------------------------------------------------------------------------
+// Fetch and display server IP for students
+// ---------------------------------------------------------------------------
+async function carregarIPServer() {
+  try {
+    const resp = await fetch('/server_ip');
+    const dados = await resp.json();
+    if (dados.ip) {
+      const ipDisplay = $('ipDisplay');
+      const serverIP = $('serverIP');
+      if (ipDisplay && serverIP) {
+        serverIP.textContent = dados.ip;
+        ipDisplay.style.display = 'block';
+      }
+    }
+  } catch (e) {
+    console.warn('Não foi possível obter IP do servidor', e);
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Inicialização
@@ -677,4 +669,5 @@ carregarPortas();
 carregarCodigosSalvosSelect();
 normalizarECarregarCodigo(textareaCodigo.value);
 atualizarStatus();
+carregarIPServer();
 setInterval(atualizarStatus, 1500);

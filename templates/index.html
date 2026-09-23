@@ -8,17 +8,26 @@
 </head>
 <body>
 
-  <div class="header-main">
-    <div>
-      <h1>Controle do Dobot Magician Lite</h1>
-      <p class="sub">Interface com Controle Manual Jog (Ponto A ➔ B) e Painel de Autorização da Porta 5000</p>
+  <div class="header-main" style="display: flex; flex-direction: column;">
+    <div style="display: flex; align-items: center; gap: 15px;">
+      <img src="/static/robot.png" alt="Robô" style="width: 50px; height: 50px; filter: drop-shadow(0 0 5px rgba(255,255,255,0.2));">
+      <div>
+        <h1>Controle do Dobot Magician Lite</h1>
+        <p class="sub">Interface com Controle Manual Jog (Ponto A ➔ B) e Painel de Autorização da Porta 5000</p>
+      </div>
     </div>
 
-    <!-- Navegação em 2 Abas -->
+        <div class="ip-display" id="ipDisplay" style="margin-top:8px; padding:8px 12px; background:rgba(37,99,235,0.15); border:1px solid rgba(37,99,235,0.4); border-radius:6px; font-family:monospace; font-size:0.9rem; color:#93c5fd; display:none;">
+      IP para acesso: <span id="serverIP">—</span>:5000
+    </div>
+
+<!-- Navegação em 2 Abas -->
     <div class="tabs-nav" id="tabsNav">
       <button class="tab-btn active" id="tabBtn1" onclick="mudarAba('abaControle')">🎮 Controle &amp; Editor</button>
       <button class="tab-btn" id="tabBtn2" onclick="mudarAba('abaAdmin')">🛡️ Autorizações &amp; Monitoramento</button>
     </div>
+
+    <a href="/manual" class="btn-manual" download title="Baixar manual do usuário (PDF)">📄 Manual do Usuário</a>
   </div>
 
   <!-- Resumo de Status Global -->
@@ -45,7 +54,7 @@
   <div id="abaControle" class="tab-content active">
     <div class="grid">
       <div class="card">
-        <div class="port-row">
+        <div class="port-row admin-only">
           <select id="portaSelect"></select>
           <button class="btn-connect" id="btnConectar">Conectar</button>
         </div>
@@ -146,12 +155,12 @@
           <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-top:10px; padding:10px; background:rgba(255,255,255,0.02); border-radius:8px; border:1px solid rgba(255,255,255,0.06);">
             <label style="font-size:0.85rem; color:var(--muted);">✏️ Escrever Texto:</label>
             <input type="text" id="textoEscrever" placeholder="Digite o nome ou texto..." value="ROBOT" style="flex:1; padding:6px 10px; font-size:0.85rem; border-radius:6px; border:1px solid rgba(255,255,255,0.12); background:rgba(0,0,0,0.2); color:#e2e8f0;">
-            <input type="number" id="escreverX" value="231.4" title="X inicial" style="width:64px; padding:4px 8px; font-size:0.85rem;">
-            <input type="number" id="escreverY" value="-48.3" title="Y inicial" style="width:64px; padding:4px 8px; font-size:0.85rem;">
-            <input type="number" id="escreverZ" value="-43.5" title="Z de desenho" style="width:64px; padding:4px 8px; font-size:0.85rem;">
-            <input type="number" id="escreverZInicio" value="" title="Z de início/aproximação (opcional)" placeholder="Z início" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverX" value="160" title="X inicial" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverY" value="-40" title="Y inicial" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverZ" value="0" title="Z de desenho (superfície)" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverZInicio" value="30" title="Z de início/aproximação (altura segura)" placeholder="Z início" style="width:64px; padding:4px 8px; font-size:0.85rem;">
             <input type="number" id="escreverR" value="0" title="R" style="width:64px; padding:4px 8px; font-size:0.85rem;">
-            <input type="number" id="escreverEsp" value="4" title="Espaçamento" style="width:64px; padding:4px 8px; font-size:0.85rem;">
+            <input type="number" id="escreverEsp" value="1.5" title="Espaçamento" style="width:64px; padding:4px 8px; font-size:0.85rem;">
             <button id="btnGerarEscrita" class="btn-sm btn-run" style="color:#0b1220;">✏️ Gerar Escrita</button>
           </div>
         </div>
